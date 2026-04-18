@@ -1,0 +1,1718 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>Grind Planner Feature Video</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>html,body{margin:0;padding:0;height:100%;background:#000;overflow:hidden}body{font-family:'Inter',system-ui,sans-serif}#root{position:fixed;inset:0}</style>
+</head><body><div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" data-presets="react">
+
+// ========== animations.jsx ==========
+
+// animations.jsx
+// Reusable animation starter: Stage, Timeline, Sprite, easing helpers.
+// Usage (in an HTML file that loads React + Babel):
+//
+//   <Stage width={1280} height={720} duration={10} background="#f6f4ef">
+//     <MyScene />
+//   </Stage>
+//
+// Inside <Stage>, any child can call useTime() to read the current
+// playhead (seconds). Or wrap content in <Sprite start={1} end={4}>...</Sprite>
+// to only render during that window -- children receive a `localTime` and
+// `progress` via the useSprite() hook.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Easing functions (hand-rolled, Popmotion-style) ─────────────────────────
+// All easings take t ∈ [0,1] and return eased t ∈ [0,1] (may overshoot for back/elastic).
+const Easing = {
+  linear: (t) => t,
+
+  // Quad
+  easeInQuad:    (t) => t * t,
+  easeOutQuad:   (t) => t * (2 - t),
+  easeInOutQuad: (t) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t),
+
+  // Cubic
+  easeInCubic:    (t) => t * t * t,
+  easeOutCubic:   (t) => (--t) * t * t + 1,
+  easeInOutCubic: (t) => (t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1),
+
+  // Quart
+  easeInQuart:    (t) => t * t * t * t,
+  easeOutQuart:   (t) => 1 - (--t) * t * t * t,
+  easeInOutQuart: (t) => (t < 0.5 ? 8 * t * t * t * t : 1 - 8 * (--t) * t * t * t),
+
+  // Expo
+  easeInExpo:  (t) => (t === 0 ? 0 : Math.pow(2, 10 * (t - 1))),
+  easeOutExpo: (t) => (t === 1 ? 1 : 1 - Math.pow(2, -10 * t)),
+  easeInOutExpo: (t) => {
+    if (t === 0) return 0;
+    if (t === 1) return 1;
+    if (t < 0.5) return 0.5 * Math.pow(2, 20 * t - 10);
+    return 1 - 0.5 * Math.pow(2, -20 * t + 10);
+  },
+
+  // Sine
+  easeInSine:    (t) => 1 - Math.cos((t * Math.PI) / 2),
+  easeOutSine:   (t) => Math.sin((t * Math.PI) / 2),
+  easeInOutSine: (t) => -(Math.cos(Math.PI * t) - 1) / 2,
+
+  // Back (overshoot)
+  easeOutBack: (t) => {
+    const c1 = 1.70158, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+  },
+  easeInBack: (t) => {
+    const c1 = 1.70158, c3 = c1 + 1;
+    return c3 * t * t * t - c1 * t * t;
+  },
+  easeInOutBack: (t) => {
+    const c1 = 1.70158, c2 = c1 * 1.525;
+    return t < 0.5
+      ? (Math.pow(2 * t, 2) * ((c2 + 1) * 2 * t - c2)) / 2
+      : (Math.pow(2 * t - 2, 2) * ((c2 + 1) * (t * 2 - 2) + c2) + 2) / 2;
+  },
+
+  // Elastic
+  easeOutElastic: (t) => {
+    const c4 = (2 * Math.PI) / 3;
+    if (t === 0) return 0;
+    if (t === 1) return 1;
+    return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+  },
+};
+
+// ── Core interpolation helpers ──────────────────────────────────────────────
+
+// Clamp a value to [min, max]
+const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+// interpolate([0, 0.5, 1], [0, 100, 50], ease?) -> fn(t)
+// Popmotion-style: linearly maps t across input keyframes to output values,
+// with optional easing per segment (single fn or array of fns).
+function interpolate(input, output, ease = Easing.linear) {
+  return (t) => {
+    if (t <= input[0]) return output[0];
+    if (t >= input[input.length - 1]) return output[output.length - 1];
+    for (let i = 0; i < input.length - 1; i++) {
+      if (t >= input[i] && t <= input[i + 1]) {
+        const span = input[i + 1] - input[i];
+        const local = span === 0 ? 0 : (t - input[i]) / span;
+        const easeFn = Array.isArray(ease) ? (ease[i] || Easing.linear) : ease;
+        const eased = easeFn(local);
+        return output[i] + (output[i + 1] - output[i]) * eased;
+      }
+    }
+    return output[output.length - 1];
+  };
+}
+
+// animate({from, to, start, end, ease})(t) — simpler single-segment tween.
+// Returns `from` before `start`, `to` after `end`.
+function animate({ from = 0, to = 1, start = 0, end = 1, ease = Easing.easeInOutCubic }) {
+  return (t) => {
+    if (t <= start) return from;
+    if (t >= end) return to;
+    const local = (t - start) / (end - start);
+    return from + (to - from) * ease(local);
+  };
+}
+
+// ── Timeline context ────────────────────────────────────────────────────────
+
+const TimelineContext = React.createContext({ time: 0, duration: 10, playing: false });
+
+const useTime = () => React.useContext(TimelineContext).time;
+const useTimeline = () => React.useContext(TimelineContext);
+
+// ── Sprite ──────────────────────────────────────────────────────────────────
+// Renders children only when the playhead is inside [start, end]. Provides
+// a sub-context with `localTime` (seconds since start) and `progress` (0..1).
+//
+//   <Sprite start={2} end={5}>
+//     {({ localTime, progress }) => <Thing x={progress * 100} />}
+//   </Sprite>
+//
+// Or as a plain wrapper — children can call useSprite() themselves.
+
+const SpriteContext = React.createContext({ localTime: 0, progress: 0, duration: 0 });
+const useSprite = () => React.useContext(SpriteContext);
+
+function Sprite({ start = 0, end = Infinity, children, keepMounted = false }) {
+  const { time } = useTimeline();
+  const visible = time >= start && time <= end;
+  if (!visible && !keepMounted) return null;
+
+  const duration = end - start;
+  const localTime = Math.max(0, time - start);
+  const progress = duration > 0 && isFinite(duration)
+    ? clamp(localTime / duration, 0, 1)
+    : 0;
+
+  const value = { localTime, progress, duration, visible };
+
+  return (
+    <SpriteContext.Provider value={value}>
+      {typeof children === 'function' ? children(value) : children}
+    </SpriteContext.Provider>
+  );
+}
+
+// ── Sample sprite components ────────────────────────────────────────────────
+
+// TextSprite: fades/slides text in on entry, holds, then fades out on exit.
+// Props: text, x, y, size, color, font, entryDur, exitDur, align
+function TextSprite({
+  text,
+  x = 0, y = 0,
+  size = 48,
+  color = '#111',
+  font = 'Inter, system-ui, sans-serif',
+  weight = 600,
+  entryDur = 0.45,
+  exitDur = 0.35,
+  entryEase = Easing.easeOutBack,
+  exitEase = Easing.easeInCubic,
+  align = 'left',
+  letterSpacing = '-0.01em',
+}) {
+  const { localTime, duration } = useSprite();
+  const exitStart = Math.max(0, duration - exitDur);
+
+  let opacity = 1;
+  let ty = 0;
+
+  if (localTime < entryDur) {
+    const t = entryEase(clamp(localTime / entryDur, 0, 1));
+    opacity = t;
+    ty = (1 - t) * 16;
+  } else if (localTime > exitStart) {
+    const t = exitEase(clamp((localTime - exitStart) / exitDur, 0, 1));
+    opacity = 1 - t;
+    ty = -t * 8;
+  }
+
+  const translateX = align === 'center' ? '-50%' : align === 'right' ? '-100%' : '0';
+
+  return (
+    <div style={{
+      position: 'absolute',
+      left: x, top: y,
+      transform: `translate(${translateX}, ${ty}px)`,
+      opacity,
+      fontFamily: font,
+      fontSize: size,
+      fontWeight: weight,
+      color,
+      letterSpacing,
+      whiteSpace: 'pre',
+      lineHeight: 1.1,
+      willChange: 'transform, opacity',
+    }}>
+      {text}
+    </div>
+  );
+}
+
+// ImageSprite: scales + fades in; optional Ken Burns drift during hold.
+function ImageSprite({
+  src,
+  x = 0, y = 0,
+  width = 400, height = 300,
+  entryDur = 0.6,
+  exitDur = 0.4,
+  kenBurns = false,
+  kenBurnsScale = 1.08,
+  radius = 12,
+  fit = 'cover',
+  placeholder = null, // {label: string} for striped placeholder
+}) {
+  const { localTime, duration } = useSprite();
+  const exitStart = Math.max(0, duration - exitDur);
+
+  let opacity = 1;
+  let scale = 1;
+
+  if (localTime < entryDur) {
+    const t = Easing.easeOutCubic(clamp(localTime / entryDur, 0, 1));
+    opacity = t;
+    scale = 0.96 + 0.04 * t;
+  } else if (localTime > exitStart) {
+    const t = Easing.easeInCubic(clamp((localTime - exitStart) / exitDur, 0, 1));
+    opacity = 1 - t;
+    scale = (kenBurns ? kenBurnsScale : 1) + 0.02 * t;
+  } else if (kenBurns) {
+    const holdSpan = exitStart - entryDur;
+    const holdT = holdSpan > 0 ? (localTime - entryDur) / holdSpan : 0;
+    scale = 1 + (kenBurnsScale - 1) * holdT;
+  }
+
+  const content = placeholder ? (
+    <div style={{
+      width: '100%', height: '100%',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'repeating-linear-gradient(135deg, #e9e6df 0 10px, #dcd8cf 10px 20px)',
+      color: '#6b6458',
+      fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+      fontSize: 13,
+      letterSpacing: '0.04em',
+      textTransform: 'uppercase',
+    }}>
+      {placeholder.label || 'image'}
+    </div>
+  ) : (
+    <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: fit, display: 'block' }} />
+  );
+
+  return (
+    <div style={{
+      position: 'absolute',
+      left: x, top: y,
+      width, height,
+      opacity,
+      transform: `scale(${scale})`,
+      transformOrigin: 'center',
+      borderRadius: radius,
+      overflow: 'hidden',
+      willChange: 'transform, opacity',
+    }}>
+      {content}
+    </div>
+  );
+}
+
+// RectSprite: simple rectangle that animates position/size/color via props.
+// Useful demo primitive — takes a `render` fn for per-frame customization.
+function RectSprite({
+  x = 0, y = 0,
+  width = 100, height = 100,
+  color = '#111',
+  radius = 8,
+  entryDur = 0.4,
+  exitDur = 0.3,
+  render, // optional: (ctx) => style overrides
+}) {
+  const spriteCtx = useSprite();
+  const { localTime, duration } = spriteCtx;
+  const exitStart = Math.max(0, duration - exitDur);
+
+  let opacity = 1;
+  let scale = 1;
+
+  if (localTime < entryDur) {
+    const t = Easing.easeOutBack(clamp(localTime / entryDur, 0, 1));
+    opacity = clamp(localTime / entryDur, 0, 1);
+    scale = 0.4 + 0.6 * t;
+  } else if (localTime > exitStart) {
+    const t = Easing.easeInQuad(clamp((localTime - exitStart) / exitDur, 0, 1));
+    opacity = 1 - t;
+    scale = 1 - 0.15 * t;
+  }
+
+  const overrides = render ? render(spriteCtx) : {};
+
+  return (
+    <div style={{
+      position: 'absolute',
+      left: x, top: y,
+      width, height,
+      background: color,
+      borderRadius: radius,
+      opacity,
+      transform: `scale(${scale})`,
+      transformOrigin: 'center',
+      willChange: 'transform, opacity',
+      ...overrides,
+    }} />
+  );
+}
+
+
+function Stage({
+  width = 1280,
+  height = 720,
+  duration = 10,
+  background = '#f6f4ef',
+  fps = 60,
+  loop = true,
+  autoplay = true,
+  persistKey = 'animstage',
+  children,
+}) {
+  const [time, setTime] = React.useState(() => {
+    try {
+      const v = parseFloat(localStorage.getItem(persistKey + ':t') || '0');
+      return isFinite(v) ? clamp(v, 0, duration) : 0;
+    } catch { return 0; }
+  });
+  const [playing, setPlaying] = React.useState(autoplay);
+  const [hoverTime, setHoverTime] = React.useState(null);
+  const [scale, setScale] = React.useState(1);
+
+  const stageRef = React.useRef(null);
+  const canvasRef = React.useRef(null);
+  const rafRef = React.useRef(null);
+  const lastTsRef = React.useRef(null);
+
+  // Persist playhead
+  React.useEffect(() => {
+    try { localStorage.setItem(persistKey + ':t', String(time)); } catch {}
+  }, [time, persistKey]);
+
+  // Auto-scale to fit viewport
+  React.useEffect(() => {
+    if (!stageRef.current) return;
+    const el = stageRef.current;
+    const measure = () => {
+      const barH = 44; // playback bar height
+      const s = Math.min(
+        el.clientWidth / width,
+        (el.clientHeight - barH) / height
+      );
+      setScale(Math.max(0.05, s));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [width, height]);
+
+  // Animation loop
+  React.useEffect(() => {
+    if (!playing) {
+      lastTsRef.current = null;
+      return;
+    }
+    const step = (ts) => {
+      if (lastTsRef.current == null) lastTsRef.current = ts;
+      const dt = (ts - lastTsRef.current) / 1000;
+      lastTsRef.current = ts;
+      setTime((t) => {
+        let next = t + dt;
+        if (next >= duration) {
+          if (loop) next = next % duration;
+          else { next = duration; setPlaying(false); }
+        }
+        return next;
+      });
+      rafRef.current = requestAnimationFrame(step);
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      lastTsRef.current = null;
+    };
+  }, [playing, duration, loop]);
+
+  // Keyboard: space = play/pause, ← → = seek
+  React.useEffect(() => {
+    const onKey = (e) => {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        setPlaying(p => !p);
+      } else if (e.code === 'ArrowLeft') {
+        setTime(t => clamp(t - (e.shiftKey ? 1 : 0.1), 0, duration));
+      } else if (e.code === 'ArrowRight') {
+        setTime(t => clamp(t + (e.shiftKey ? 1 : 0.1), 0, duration));
+      } else if (e.key === '0' || e.code === 'Home') {
+        setTime(0);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [duration]);
+
+  const displayTime = hoverTime != null ? hoverTime : time;
+
+  const ctxValue = React.useMemo(
+    () => ({ time: displayTime, duration, playing, setTime, setPlaying }),
+    [displayTime, duration, playing]
+  );
+
+  return (
+    <div
+      ref={stageRef}
+      style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center',
+        background: '#0a0a0a',
+        fontFamily: 'Inter, system-ui, sans-serif',
+      }}
+    >
+      {/* Canvas area — vertically centered in remaining space */}
+      <div style={{
+        flex: 1,
+        width: '100%',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        overflow: 'hidden',
+        minHeight: 0,
+      }}>
+        <div
+          ref={canvasRef}
+          style={{
+            width, height,
+            background,
+            position: 'relative',
+            transform: `scale(${scale})`,
+            transformOrigin: 'center',
+            flexShrink: 0,
+            boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
+            overflow: 'hidden',
+          }}
+        >
+          <TimelineContext.Provider value={ctxValue}>
+            {children}
+          </TimelineContext.Provider>
+        </div>
+      </div>
+
+      {/* Playback bar — stacked below canvas, never overlapping */}
+      <PlaybackBar
+        time={displayTime}
+        actualTime={time}
+        duration={duration}
+        playing={playing}
+        onPlayPause={() => setPlaying(p => !p)}
+        onReset={() => { setTime(0); }}
+        onSeek={(t) => setTime(t)}
+        onHover={(t) => setHoverTime(t)}
+      />
+    </div>
+  );
+}
+
+// ── Playback bar ────────────────────────────────────────────────────────────
+// Play/pause, return-to-begin, scrub track, time display.
+// Uses fixed-width time fields so layout doesn't thrash.
+
+function PlaybackBar({ time, duration, playing, onPlayPause, onReset, onSeek, onHover }) {
+  const trackRef = React.useRef(null);
+  const [dragging, setDragging] = React.useState(false);
+
+  const timeFromEvent = React.useCallback((e) => {
+    const rect = trackRef.current.getBoundingClientRect();
+    const x = clamp((e.clientX - rect.left) / rect.width, 0, 1);
+    return x * duration;
+  }, [duration]);
+
+  const onTrackMove = (e) => {
+    if (!trackRef.current) return;
+    const t = timeFromEvent(e);
+    if (dragging) {
+      onSeek(t);
+    } else {
+      onHover(t);
+    }
+  };
+
+  const onTrackLeave = () => {
+    if (!dragging) onHover(null);
+  };
+
+  const onTrackDown = (e) => {
+    setDragging(true);
+    const t = timeFromEvent(e);
+    onSeek(t);
+    onHover(null);
+  };
+
+  React.useEffect(() => {
+    if (!dragging) return;
+    const onUp = () => setDragging(false);
+    const onMove = (e) => {
+      if (!trackRef.current) return;
+      const t = timeFromEvent(e);
+      onSeek(t);
+    };
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('mousemove', onMove);
+    return () => {
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('mousemove', onMove);
+    };
+  }, [dragging, timeFromEvent, onSeek]);
+
+  const pct = duration > 0 ? (time / duration) * 100 : 0;
+  const fmt = (t) => {
+    const total = Math.max(0, t);
+    const m = Math.floor(total / 60);
+    const s = Math.floor(total % 60);
+    const cs = Math.floor((total * 100) % 100);
+    return `${String(m).padStart(1, '0')}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
+  };
+
+  const mono = 'JetBrains Mono, ui-monospace, SFMono-Regular, monospace';
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      padding: '8px 16px',
+      background: 'rgba(20,20,20,0.92)',
+      borderTop: '1px solid rgba(255,255,255,0.08)',
+      width: '100%',
+      maxWidth: 680,
+      alignSelf: 'center',
+
+      borderRadius: 8,
+      color: '#f6f4ef',
+      fontFamily: 'Inter, system-ui, sans-serif',
+      userSelect: 'none',
+      flexShrink: 0,
+    }}>
+      <IconButton onClick={onReset} title="Return to start (0)">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M3 2v10M12 2L5 7l7 5V2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"/>
+        </svg>
+      </IconButton>
+      <IconButton onClick={onPlayPause} title="Play/pause (space)">
+        {playing ? (
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <rect x="3" y="2" width="3" height="10" fill="currentColor"/>
+            <rect x="8" y="2" width="3" height="10" fill="currentColor"/>
+          </svg>
+        ) : (
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M3 2l9 5-9 5V2z" fill="currentColor"/>
+          </svg>
+        )}
+      </IconButton>
+
+      {/* Current time: fixed width so it doesn't thrash */}
+      <div style={{
+        fontFamily: mono,
+        fontSize: 12,
+        fontVariantNumeric: 'tabular-nums',
+        width: 64, textAlign: 'right',
+        color: '#f6f4ef',
+      }}>
+        {fmt(time)}
+      </div>
+
+      {/* Scrub track */}
+      <div
+        ref={trackRef}
+        onMouseMove={onTrackMove}
+        onMouseLeave={onTrackLeave}
+        onMouseDown={onTrackDown}
+        style={{
+          flex: 1,
+          height: 22,
+          position: 'relative',
+          cursor: 'pointer',
+          display: 'flex', alignItems: 'center',
+        }}
+      >
+        <div style={{
+          position: 'absolute',
+          left: 0, right: 0, height: 4,
+          background: 'rgba(255,255,255,0.12)',
+          borderRadius: 2,
+        }}/>
+        <div style={{
+          position: 'absolute',
+          left: 0, width: `${pct}%`, height: 4,
+          background: 'oklch(72% 0.12 250)',
+          borderRadius: 2,
+        }}/>
+        <div style={{
+          position: 'absolute',
+          left: `${pct}%`, top: '50%',
+          width: 12, height: 12,
+          marginLeft: -6, marginTop: -6,
+          background: '#fff',
+          borderRadius: 6,
+          boxShadow: '0 2px 4px rgba(0,0,0,0.4)',
+        }}/>
+      </div>
+
+      {/* Duration: fixed width */}
+      <div style={{
+        fontFamily: mono,
+        fontSize: 12,
+        fontVariantNumeric: 'tabular-nums',
+        width: 64, textAlign: 'left',
+        color: 'rgba(246,244,239,0.55)',
+      }}>
+        {fmt(duration)}
+      </div>
+    </div>
+  );
+}
+
+function IconButton({ children, onClick, title }) {
+  const [hover, setHover] = React.useState(false);
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        width: 28, height: 28,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: hover ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        borderRadius: 6,
+        color: '#f6f4ef',
+        cursor: 'pointer',
+        padding: 0,
+        transition: 'background 120ms',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+
+Object.assign(window, {
+  Easing, interpolate, animate, clamp,
+  TimelineContext, useTime, useTimeline,
+  Sprite, SpriteContext, useSprite,
+  TextSprite, ImageSprite, RectSprite,
+  Stage, PlaybackBar,
+});
+
+
+
+// ========== scenes_core.jsx ==========
+// scenes_core.jsx — shared primitives for the Grind Planner video
+
+const GP_COLORS = {
+  bg: '#0b0d0b',
+  bg2: '#0f130f',
+  panel: '#161a16',
+  panel2: '#1f251f',
+  border: '#2a332a',
+  border2: '#3a443a',
+  text: '#e8ede8',
+  muted: '#8a948a',
+  muted2: '#5c665c',
+  green: '#7ee06b',
+  greenDim: '#4a8a3d',
+  yellow: '#f2c94c',
+  passive: '#6bb5e0',
+  danger: '#e06b6b',
+};
+
+const GP_MONO = "'JetBrains Mono', ui-monospace, Menlo, monospace";
+const GP_SANS = "'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
+
+// Scanline overlay — gives everything the CRT terminal feel
+function Scanlines({ opacity = 0.04 }) {
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, pointerEvents: 'none',
+      backgroundImage: `repeating-linear-gradient(0deg, rgba(126,224,107,${opacity}) 0px, rgba(126,224,107,${opacity}) 1px, transparent 1px, transparent 3px)`,
+      zIndex: 100,
+    }}/>
+  );
+}
+
+// Vignette
+function Vignette() {
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, pointerEvents: 'none',
+      background: 'radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.5) 100%)',
+      zIndex: 99,
+    }}/>
+  );
+}
+
+// Blinking cursor block
+function Cursor({ color = GP_COLORS.green, w = 14, h = 24, style = {} }) {
+  const time = useTime();
+  const on = Math.floor(time * 2) % 2 === 0;
+  return (
+    <span style={{
+      display: 'inline-block',
+      width: w, height: h,
+      background: color,
+      opacity: on ? 1 : 0,
+      marginLeft: 4,
+      verticalAlign: 'middle',
+      boxShadow: `0 0 12px ${color}`,
+      ...style,
+    }}/>
+  );
+}
+
+// Typewriter text — reveals characters over [start, end] in sprite-local time
+function Typewriter({ text, startLocal = 0, cps = 40, style = {}, showCursor = true, cursorColor }) {
+  const { localTime } = useSprite();
+  const chars = Math.max(0, Math.min(text.length, Math.floor((localTime - startLocal) * cps)));
+  const done = chars >= text.length;
+  const { time } = useTimeline();
+  const on = Math.floor(time * 2) % 2 === 0;
+  return (
+    <span style={{ fontFamily: GP_MONO, ...style }}>
+      {text.slice(0, chars)}
+      {showCursor && (
+        <span style={{
+          display: 'inline-block',
+          width: '0.55em', height: '1em',
+          background: cursorColor || style.color || GP_COLORS.green,
+          opacity: done ? (on ? 1 : 0) : 1,
+          marginLeft: 2,
+          verticalAlign: '-0.12em',
+        }}/>
+      )}
+    </span>
+  );
+}
+
+// Animated counter — interpolates 0 → value with easing.
+function Counter({ from = 0, to = 100, prefix = '', suffix = '', format = (n)=>Math.round(n).toLocaleString('en-US'), startLocal = 0, dur = 1, ease = Easing.easeOutCubic, style = {} }) {
+  const { localTime } = useSprite();
+  const t = clamp((localTime - startLocal) / dur, 0, 1);
+  const v = from + (to - from) * ease(t);
+  return <span style={{ fontFamily: GP_MONO, fontVariantNumeric: 'tabular-nums', ...style }}>{prefix}{format(v)}{suffix}</span>;
+}
+
+// A tiny label with accent dot — used as caption tags
+function Tag({ text, color = GP_COLORS.green, style = {} }) {
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 8,
+      fontFamily: GP_MONO, fontSize: 14, letterSpacing: 3,
+      color: GP_COLORS.muted, textTransform: 'uppercase',
+      padding: '6px 12px',
+      border: `1px solid ${GP_COLORS.border}`,
+      borderRadius: 100,
+      background: 'rgba(11,13,11,0.6)',
+      ...style,
+    }}>
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, boxShadow: `0 0 8px ${color}` }}/>
+      {text}
+    </div>
+  );
+}
+
+// Progress bar
+function Bar({ progress = 0, color = GP_COLORS.green, trackColor = GP_COLORS.border, height = 6, style = {} }) {
+  return (
+    <div style={{
+      position: 'relative',
+      width: '100%', height,
+      background: trackColor, borderRadius: height/2,
+      overflow: 'hidden',
+      ...style,
+    }}>
+      <div style={{
+        position: 'absolute', top:0, left: 0,
+        width: `${clamp(progress, 0, 1) * 100}%`, height: '100%',
+        background: color,
+        boxShadow: `0 0 14px ${color}`,
+        transition: 'none',
+      }}/>
+    </div>
+  );
+}
+
+// Camera — applies a scale/translate transform to its children, driven by interpolator props.
+function Camera({ x = 0, y = 0, scale = 1, children }) {
+  return (
+    <div style={{
+      position: 'absolute', inset: 0,
+      transform: `scale(${scale}) translate(${x}px, ${y}px)`,
+      transformOrigin: 'center center',
+      transition: 'none',
+      willChange: 'transform',
+    }}>{children}</div>
+  );
+}
+
+Object.assign(window, {
+  GP_COLORS, GP_MONO, GP_SANS,
+  Scanlines, Vignette, Cursor, Typewriter, Counter, Tag, Bar, Camera,
+});
+
+
+// ========== scene_hook.jsx ==========
+// scene_hook.jsx — Scene 1: The question every grinder has asked
+
+function SceneHook({ start, end }) {
+  return (
+    <Sprite start={start} end={end}>
+      {({ localTime, duration }) => {
+        // Camera: slow push-in
+        const camScale = interpolate([0, duration], [1.0, 1.08], Easing.easeOutQuad)(localTime);
+
+        // "HOW DO I" and the dollar amount type in staggered
+        return (
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: GP_COLORS.bg,
+            transform: `scale(${camScale})`,
+            transformOrigin: 'center center',
+            willChange: 'transform',
+          }}>
+            {/* Giant ambient green glow in the BG */}
+            <div style={{
+              position: 'absolute', left: '50%', top: '50%',
+              width: 1400, height: 1400, marginLeft: -700, marginTop: -700,
+              background: `radial-gradient(circle, rgba(126,224,107,0.10), transparent 55%)`,
+              pointerEvents: 'none',
+              opacity: interpolate([0, 0.6, duration-0.5, duration], [0, 1, 1, 0], Easing.easeInOutCubic)(localTime),
+            }}/>
+
+            {/* Terminal prompt block, centered */}
+            <div style={{
+              position: 'absolute',
+              left: '50%', top: '50%',
+              transform: 'translate(-50%, -50%)',
+              textAlign: 'left',
+              width: 1400,
+            }}>
+              <div style={{
+                fontFamily: GP_MONO, fontSize: 18,
+                color: GP_COLORS.muted, letterSpacing: 2,
+                opacity: interpolate([0, 0.4], [0, 1], Easing.easeOutCubic)(localTime),
+                marginBottom: 26,
+              }}>
+                <span style={{ color: GP_COLORS.green }}>grinder@ls:~$</span> plan
+              </div>
+
+              <div style={{
+                fontFamily: GP_MONO, fontWeight: 700,
+                fontSize: 110, lineHeight: 1.05,
+                color: GP_COLORS.text, letterSpacing: -3,
+              }}>
+                <div>
+                  <Typewriter text="how do i make" startLocal={0.35} cps={26}
+                    style={{ color: GP_COLORS.text, fontSize: 110 }} showCursor={false}/>
+                </div>
+                <div style={{ marginTop: 6 }}>
+                  <Typewriter text="$10,000,000" startLocal={1.55} cps={20}
+                    style={{ color: GP_COLORS.green, fontSize: 140, letterSpacing: -4 }} showCursor={false}/>
+                </div>
+                <div style={{ marginTop: 6 }}>
+                  <Typewriter text="by friday?" startLocal={3.1} cps={26}
+                    style={{ color: GP_COLORS.text, fontSize: 110 }} showCursor={true} cursorColor={GP_COLORS.green}/>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom hint */}
+            <div style={{
+              position: 'absolute', left: 0, right: 0, bottom: 70,
+              textAlign: 'center',
+              fontFamily: GP_MONO, fontSize: 18,
+              color: GP_COLORS.muted2, letterSpacing: 4,
+              textTransform: 'uppercase',
+              opacity: interpolate([4.5, 5.0, duration-0.3, duration], [0, 1, 1, 0], Easing.easeInOutCubic)(localTime),
+            }}>
+              — stop guessing —
+            </div>
+          </div>
+        );
+      }}
+    </Sprite>
+  );
+}
+
+Object.assign(window, { SceneHook });
+
+
+// ========== scene_select.jsx ==========
+// scene_select.jsx — Scene 2: Pick activities
+
+const ACTIVITIES = [
+  { key: 'cayo',    name: 'Cayo Perico',      rate: '$1.0M / 80min',  type: 'heist',   cd: '144min cooldown' },
+  { key: 'nightclub', name: 'Nightclub',      rate: '$1.0M / 20min',  type: 'passive', cd: '48h full stock' },
+  { key: 'acid',    name: 'Acid Lab',         rate: '$335K / 15min',  type: 'passive', cd: '24h full stock' },
+  { key: 'agency',  name: 'Agency Contract',  rate: '$200K / 25min',  type: 'heist',   cd: '—' },
+  { key: 'bunker',  name: 'Bunker',           rate: '$1.05M / 25min', type: 'passive', cd: '32h full stock' },
+  { key: 'import',  name: 'Vehicle Export',   rate: '$20K / 8min',    type: 'fill',    cd: '20min cooldown' },
+];
+
+function ActivityRow({ activity, selected, arriveAt, toggleAt }) {
+  const { localTime } = useSprite();
+  // Row slides in
+  const slide = interpolate([arriveAt, arriveAt + 0.5], [80, 0], Easing.easeOutCubic)(localTime);
+  const opacity = interpolate([arriveAt, arriveAt + 0.4], [0, 1], Easing.easeOutCubic)(localTime);
+  // Toggle activates
+  const isOn = toggleAt != null && localTime >= toggleAt;
+  const togglePulse = toggleAt != null ? interpolate([toggleAt, toggleAt + 0.3, toggleAt + 0.6], [0, 1.2, 1], Easing.easeOutBack)(localTime) : 1;
+
+  const typeColor = activity.type === 'passive' ? GP_COLORS.passive :
+                    activity.type === 'fill'    ? GP_COLORS.yellow  : GP_COLORS.green;
+
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: '46px 1fr 200px 160px',
+      alignItems: 'center',
+      gap: 20,
+      padding: '18px 22px',
+      background: isOn ? 'rgba(126,224,107,0.06)' : GP_COLORS.panel,
+      border: `1px solid ${isOn ? GP_COLORS.greenDim : GP_COLORS.border}`,
+      borderRadius: 8,
+      marginBottom: 10,
+      transform: `translateX(${slide}px)`,
+      opacity,
+      transition: 'none',
+    }}>
+      {/* Checkbox */}
+      <div style={{
+        width: 26, height: 26,
+        border: `2px solid ${isOn ? GP_COLORS.green : GP_COLORS.border2}`,
+        borderRadius: 4,
+        background: isOn ? GP_COLORS.green : 'transparent',
+        transform: `scale(${togglePulse})`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        boxShadow: isOn ? `0 0 16px rgba(126,224,107,0.6)` : 'none',
+      }}>
+        {isOn && (
+          <svg width="16" height="16" viewBox="0 0 16 16">
+            <path d="M3 8.5 L6.5 12 L13 4" stroke="#0a0c0a" strokeWidth="2.6" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        )}
+      </div>
+      {/* Name + type tag */}
+      <div>
+        <div style={{
+          fontFamily: GP_MONO, fontSize: 22, fontWeight: 600,
+          color: isOn ? GP_COLORS.text : GP_COLORS.muted,
+          letterSpacing: -0.3,
+        }}>{activity.name}</div>
+        <div style={{
+          fontFamily: GP_MONO, fontSize: 12, letterSpacing: 2,
+          color: typeColor, textTransform: 'uppercase', marginTop: 4,
+        }}>{activity.type}</div>
+      </div>
+      {/* Rate */}
+      <div style={{
+        fontFamily: GP_MONO, fontSize: 18,
+        color: isOn ? GP_COLORS.green : GP_COLORS.muted,
+        fontVariantNumeric: 'tabular-nums',
+      }}>{activity.rate}</div>
+      {/* Cooldown */}
+      <div style={{
+        fontFamily: GP_MONO, fontSize: 13,
+        color: GP_COLORS.muted2,
+        textAlign: 'right',
+      }}>{activity.cd}</div>
+    </div>
+  );
+}
+
+function SceneSelect({ start, end }) {
+  return (
+    <Sprite start={start} end={end}>
+      {({ localTime, duration }) => {
+        // Camera: subtle drift-up
+        const camY = interpolate([0, duration], [20, -30], Easing.easeInOutCubic)(localTime);
+        const camScale = interpolate([0, duration], [1.0, 1.04], Easing.easeInOutCubic)(localTime);
+
+        // Panel entry
+        const panelOp = interpolate([0, 0.4], [0, 1], Easing.easeOutCubic)(localTime);
+        const panelY  = interpolate([0, 0.5], [40, 0], Easing.easeOutCubic)(localTime);
+
+        // Toggle timings — rapid cascade
+        const toggles = { cayo: 1.4, nightclub: 1.8, acid: 2.2 };
+
+        return (
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: GP_COLORS.bg,
+          }}>
+            {/* Chapter tag top-left */}
+            <div style={{
+              position: 'absolute', top: 60, left: 80,
+              opacity: interpolate([0, 0.5, duration-0.3, duration], [0, 1, 1, 0], Easing.easeInOutCubic)(localTime),
+            }}>
+              <Tag text="01 / pick your activities" color={GP_COLORS.green}/>
+            </div>
+
+            {/* Main card — centered */}
+            <div style={{
+              position: 'absolute',
+              left: '50%', top: '50%',
+              transform: `translate(-50%, calc(-50% + ${camY}px)) scale(${camScale})`,
+              transformOrigin: 'center',
+              width: 1400,
+              opacity: panelOp,
+              willChange: 'transform',
+            }}>
+              <div style={{
+                transform: `translateY(${panelY}px)`,
+                background: GP_COLORS.bg2,
+                border: `1px solid ${GP_COLORS.border}`,
+                borderRadius: 12,
+                padding: 28,
+                boxShadow: '0 30px 80px rgba(0,0,0,0.6)',
+              }}>
+                {/* Header */}
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  paddingBottom: 16, marginBottom: 22,
+                  borderBottom: `1px solid ${GP_COLORS.border}`,
+                }}>
+                  <div style={{
+                    fontFamily: GP_MONO, fontSize: 14, letterSpacing: 3,
+                    color: GP_COLORS.yellow, textTransform: 'uppercase',
+                  }}>ACTIVITIES</div>
+                  <div style={{
+                    fontFamily: GP_MONO, fontSize: 14,
+                    color: GP_COLORS.muted,
+                  }}>
+                    <Counter from={0} to={[toggles.cayo, toggles.nightclub, toggles.acid].filter(t => localTime >= t).length}
+                      startLocal={0} dur={0.1} format={(n)=>Math.round(n)} />
+                    <span> / 6 selected</span>
+                  </div>
+                </div>
+
+                {ACTIVITIES.map((a, i) => (
+                  <ActivityRow key={a.key} activity={a}
+                    arriveAt={0.1 + i * 0.08}
+                    toggleAt={toggles[a.key]}/>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      }}
+    </Sprite>
+  );
+}
+
+Object.assign(window, { SceneSelect });
+
+
+// ========== scene_schedule.jsx ==========
+// scene_schedule.jsx — Scene 3: Day-by-day schedule materializes
+
+const DAYS_DATA = [
+  {
+    num: 1,
+    active: '2hr 20min',
+    total: '$2,410,400',
+    cumulative: '$2,410,400',
+    rows: [
+      { type: 'heist',   name: 'Cayo Perico Heist × 2', meta: '2hr 40min · $2,000,000' },
+      { type: 'down',    name: '↓ cooldown',            meta: '20min' },
+      { type: 'passive', name: 'Acid Lab Sell',          meta: '15min · $410,400' },
+    ],
+  },
+  {
+    num: 2,
+    active: '2hr 48min',
+    total: '$2,416,800',
+    cumulative: '$4,827,200',
+    rows: [
+      { type: 'heist',   name: 'Cayo Perico Heist × 2', meta: '2hr 40min · $2,000,000' },
+      { type: 'down',    name: '↓ downtime',            meta: '40min' },
+      { type: 'passive', name: 'Nightclub Full Sell',    meta: '20min · $416,800' },
+      { type: 'pend',    name: '⏳ Acid Lab — 62% full', meta: '$207K pending' },
+    ],
+  },
+  {
+    num: 3,
+    active: '2hr 48min',
+    total: '$2,416,800',
+    cumulative: '$7,250,400',
+    rows: [
+      { type: 'heist',   name: 'Cayo Perico Heist × 2', meta: '2hr 40min · $2,000,000' },
+      { type: 'down',    name: '↓ downtime',            meta: '40min' },
+      { type: 'passive', name: 'Nightclub Full Sell',    meta: '20min · $1,010,400' },
+      { type: 'pend',    name: '⏳ Acid Lab — 62% full', meta: '$207K pending' },
+    ],
+  },
+  {
+    num: 4,
+    active: '2hr 40min',
+    total: '$2,749,600',
+    cumulative: '$10,000,000',
+    final: true,
+    rows: [
+      { type: 'heist',   name: 'Cayo Perico Heist × 2', meta: '2hr 40min · $2,000,000' },
+      { type: 'passive', name: 'Final Liquidation',     meta: 'partial sells · $749,600' },
+      { type: 'target',  name: 'TARGET HIT',            meta: '$10,000,000' },
+    ],
+  },
+];
+
+function ScheduleRow({ row, appearAt }) {
+  const { localTime } = useSprite();
+  const op = interpolate([appearAt, appearAt + 0.35], [0, 1], Easing.easeOutCubic)(localTime);
+  const x = interpolate([appearAt, appearAt + 0.45], [-30, 0], Easing.easeOutCubic)(localTime);
+  if (op <= 0) return null;
+
+  if (row.type === 'down') {
+    return (
+      <div style={{
+        display: 'flex', justifyContent: 'space-between',
+        padding: '4px 0 4px 14px',
+        fontFamily: GP_MONO, fontSize: 14,
+        color: GP_COLORS.muted2, fontStyle: 'italic',
+        opacity: op * 0.7, transform: `translateX(${x}px)`,
+      }}>
+        <span>{row.name}</span><span>{row.meta}</span>
+      </div>
+    );
+  }
+  if (row.type === 'pend') {
+    return (
+      <div style={{
+        display: 'flex', justifyContent: 'space-between',
+        padding: '10px 0 4px',
+        marginTop: 6,
+        borderTop: `1px dashed ${GP_COLORS.border}`,
+        fontFamily: GP_MONO, fontSize: 14,
+        color: GP_COLORS.yellow,
+        opacity: op, transform: `translateX(${x}px)`,
+      }}>
+        <span style={{ color: '#c29a2a' }}>{row.name}</span><span>{row.meta}</span>
+      </div>
+    );
+  }
+  if (row.type === 'target') {
+    return (
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '14px 16px', marginTop: 10,
+        background: 'rgba(126,224,107,0.12)',
+        border: `1px solid ${GP_COLORS.greenDim}`,
+        borderRadius: 6,
+        fontFamily: GP_MONO, fontSize: 16, fontWeight: 700,
+        color: GP_COLORS.green, letterSpacing: 2,
+        opacity: op, transform: `translateX(${x}px)`,
+      }}>
+        <span>✓ {row.name}</span><span>{row.meta}</span>
+      </div>
+    );
+  }
+  const icon = row.type === 'passive' ? '⟳' : '▸';
+  const iconColor = row.type === 'passive' ? GP_COLORS.passive : GP_COLORS.green;
+  return (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between',
+      padding: '7px 0',
+      fontFamily: GP_MONO, fontSize: 16,
+      opacity: op, transform: `translateX(${x}px)`,
+    }}>
+      <span style={{ color: GP_COLORS.text }}>
+        <span style={{ color: iconColor, marginRight: 8 }}>{icon}</span>
+        {row.name}
+      </span>
+      <span style={{ color: GP_COLORS.muted }}>{row.meta}</span>
+    </div>
+  );
+}
+
+function DayCard({ day, appearAt, rowsBaseAt, highlighted }) {
+  const { localTime } = useSprite();
+  const op = interpolate([appearAt, appearAt + 0.45], [0, 1], Easing.easeOutCubic)(localTime);
+  const y  = interpolate([appearAt, appearAt + 0.5], [24, 0], Easing.easeOutCubic)(localTime);
+  if (op <= 0) return null;
+  return (
+    <div style={{
+      background: day.final ? 'rgba(126,224,107,0.04)' : GP_COLORS.panel,
+      border: `1px solid ${day.final ? GP_COLORS.greenDim : GP_COLORS.border}`,
+      borderRadius: 8,
+      padding: '16px 20px',
+      marginBottom: 12,
+      opacity: op,
+      transform: `translateY(${y}px)`,
+      transition: 'none',
+    }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+        paddingBottom: 10, marginBottom: 10,
+        borderBottom: `1px dashed ${GP_COLORS.border}`,
+      }}>
+        <div style={{
+          fontFamily: GP_MONO, fontSize: 18, fontWeight: 700,
+          color: GP_COLORS.yellow, letterSpacing: 2,
+        }}>DAY {day.num}</div>
+        <div style={{
+          fontFamily: GP_MONO, fontSize: 13, color: GP_COLORS.muted,
+        }}>
+          {day.active} active · <span style={{ color: GP_COLORS.green }}>{day.total}</span>
+          <span style={{ color: GP_COLORS.muted2 }}> · Total: {day.cumulative}</span>
+        </div>
+      </div>
+      {day.rows.map((row, i) => (
+        <ScheduleRow key={i} row={row} appearAt={rowsBaseAt + i * 0.18}/>
+      ))}
+    </div>
+  );
+}
+
+function SceneSchedule({ start, end }) {
+  return (
+    <Sprite start={start} end={end}>
+      {({ localTime, duration }) => {
+        // Subtle camera push-in
+        const camScale = interpolate([0, duration], [1.0, 1.05], Easing.easeInOutQuad)(localTime);
+        // As days stack, scroll up to keep latest visible
+        // 4 days total — spread across the scene
+        const dayStarts = [0.4, 1.6, 2.8, 4.0];
+        const daysVisible = dayStarts.filter(t => localTime >= t).length;
+        // Shift up as more days appear
+        const shift = interpolate(
+          [0, 1, 2, 3, 4],
+          [0, 0, -40, -140, -260],
+          Easing.easeInOutCubic
+        )(daysVisible);
+
+        return (
+          <div style={{ position: 'absolute', inset: 0, background: GP_COLORS.bg }}>
+            {/* Chapter tag */}
+            <div style={{
+              position: 'absolute', top: 60, left: 80,
+              opacity: interpolate([0, 0.5, duration-0.3, duration], [0, 1, 1, 0], Easing.easeInOutCubic)(localTime),
+            }}>
+              <Tag text="02 / chronological sim" color={GP_COLORS.yellow}/>
+            </div>
+
+            {/* Running total — top right */}
+            <div style={{
+              position: 'absolute', top: 50, right: 80, textAlign: 'right',
+              opacity: interpolate([0.2, 0.7], [0, 1], Easing.easeOutCubic)(localTime),
+            }}>
+              <div style={{
+                fontFamily: GP_MONO, fontSize: 11, letterSpacing: 3,
+                color: GP_COLORS.muted, textTransform: 'uppercase', marginBottom: 6,
+              }}>EARNED</div>
+              <div style={{
+                fontFamily: GP_MONO, fontSize: 44, fontWeight: 700,
+                color: GP_COLORS.green, letterSpacing: -1,
+                fontVariantNumeric: 'tabular-nums',
+                textShadow: `0 0 24px rgba(126,224,107,0.3)`,
+              }}>
+                ${([0, 2410400, 4827200, 7250400, 10000000][daysVisible] || 0).toLocaleString('en-US')}
+              </div>
+              <div style={{
+                fontFamily: GP_MONO, fontSize: 13, color: GP_COLORS.muted2, marginTop: 4,
+              }}>of $10,000,000 target</div>
+            </div>
+
+            {/* Schedule panel - centered */}
+            <div style={{
+              position: 'absolute',
+              left: '50%', top: '50%',
+              transform: `translate(-50%, -50%) scale(${camScale})`,
+              transformOrigin: 'center',
+              width: 1100, height: 820,
+              willChange: 'transform',
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                background: GP_COLORS.bg2,
+                border: `1px solid ${GP_COLORS.border}`,
+                borderRadius: 12,
+                padding: '22px 24px',
+                height: '100%',
+                overflow: 'hidden',
+                position: 'relative',
+              }}>
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between',
+                  paddingBottom: 14, marginBottom: 16,
+                  borderBottom: `1px solid ${GP_COLORS.border}`,
+                  fontFamily: GP_MONO, fontSize: 12, letterSpacing: 3,
+                  textTransform: 'uppercase',
+                }}>
+                  <span style={{ color: GP_COLORS.yellow }}>schedule · 4 days</span>
+                  <span style={{ color: GP_COLORS.muted }}>chronological output</span>
+                </div>
+                {/* Scrolling stack */}
+                <div style={{
+                  transform: `translateY(${shift}px)`,
+                  transition: 'none',
+                }}>
+                  {DAYS_DATA.map((d, i) => (
+                    <DayCard key={i} day={d}
+                      appearAt={dayStarts[i]}
+                      rowsBaseAt={dayStarts[i] + 0.25}/>
+                  ))}
+                </div>
+                {/* Top fade */}
+                <div style={{
+                  position: 'absolute', top: 60, left: 0, right: 0, height: 40,
+                  background: `linear-gradient(to bottom, ${GP_COLORS.bg2}, transparent)`,
+                  pointerEvents: 'none',
+                }}/>
+              </div>
+            </div>
+          </div>
+        );
+      }}
+    </Sprite>
+  );
+}
+
+Object.assign(window, { SceneSchedule });
+
+
+// ========== scene_search.jsx ==========
+// scene_search.jsx — Scene 4: Deadline slider binary-searches the hours/day
+
+function SceneSearch({ start, end }) {
+  return (
+    <Sprite start={start} end={end}>
+      {({ localTime, duration }) => {
+        // Deadline sweeps from 14 days down to 4 days, and hours needed rises.
+        // Sweep animation across ~3 seconds
+        const sweepT = clamp((localTime - 0.8) / 3.2, 0, 1);
+        // Ease in and hold at the end
+        const eased = Easing.easeInOutCubic(sweepT);
+        const deadlineDays = Math.round(14 - eased * 10); // 14 → 4
+        // hours/day required grows non-linearly
+        const hoursDec = 0.9 + eased * 5.2; // 0.9 → 6.1 hrs
+        const hours = Math.floor(hoursDec);
+        const mins = Math.round((hoursDec - hours) * 60);
+        // days need: at 14 days → 14 days; at 4 days → 4 days (we lock)
+        // $/hr rate
+        const rate = 512 - eased * 120; // $512K → $392K
+
+        // Pulse on final lock
+        const locked = sweepT >= 1;
+        const lockPulse = locked ? interpolate([0, 0.3, 0.8], [1, 1.08, 1], Easing.easeOutBack)(localTime - (0.8 + 3.2)) : 1;
+
+        // Panel entry
+        const panelOp = interpolate([0, 0.4], [0, 1], Easing.easeOutCubic)(localTime);
+        const panelY  = interpolate([0, 0.5], [40, 0], Easing.easeOutCubic)(localTime);
+
+        // Slider knob position (invert: short deadline = right)
+        const sliderPct = ((14 - deadlineDays) / 10) * 100; // 0% → 100%
+
+        return (
+          <div style={{ position: 'absolute', inset: 0, background: GP_COLORS.bg }}>
+            {/* Chapter tag */}
+            <div style={{
+              position: 'absolute', top: 60, left: 80,
+              opacity: interpolate([0, 0.5, duration-0.3, duration], [0, 1, 1, 0], Easing.easeInOutCubic)(localTime),
+            }}>
+              <Tag text="03 / deadline ↔ hours" color={GP_COLORS.passive}/>
+            </div>
+
+            {/* Big split layout */}
+            <div style={{
+              position: 'absolute',
+              left: '50%', top: '50%',
+              transform: `translate(-50%, calc(-50% + ${panelY * 0}px))`,
+              width: 1500,
+              display: 'grid',
+              gridTemplateColumns: '1fr 60px 1fr',
+              alignItems: 'center',
+              gap: 0,
+              opacity: panelOp,
+            }}>
+              {/* LEFT: Deadline slider */}
+              <div style={{
+                background: GP_COLORS.bg2,
+                border: `1px solid ${GP_COLORS.border}`,
+                borderRadius: 12, padding: 44,
+                transform: `translateY(${panelY}px)`,
+              }}>
+                <div style={{
+                  fontFamily: GP_MONO, fontSize: 13, letterSpacing: 3,
+                  color: GP_COLORS.muted, textTransform: 'uppercase', marginBottom: 20,
+                }}>DEADLINE</div>
+                <div style={{
+                  fontFamily: GP_MONO, fontSize: 120, fontWeight: 700,
+                  color: GP_COLORS.text, lineHeight: 1,
+                  letterSpacing: -4,
+                  fontVariantNumeric: 'tabular-nums',
+                }}>
+                  {deadlineDays}<span style={{ color: GP_COLORS.muted, fontSize: 60, marginLeft: 14 }}>days</span>
+                </div>
+                {/* Slider */}
+                <div style={{ marginTop: 50, position: 'relative' }}>
+                  <div style={{
+                    position: 'relative', height: 6,
+                    background: GP_COLORS.border, borderRadius: 3,
+                  }}>
+                    <div style={{
+                      position: 'absolute', left: 0, top: 0, bottom: 0,
+                      width: `${sliderPct}%`,
+                      background: `linear-gradient(to right, ${GP_COLORS.greenDim}, ${GP_COLORS.danger})`,
+                      borderRadius: 3,
+                      boxShadow: `0 0 12px rgba(224,107,107,0.4)`,
+                    }}/>
+                    <div style={{
+                      position: 'absolute',
+                      left: `${sliderPct}%`, top: '50%',
+                      width: 24, height: 24, marginLeft: -12, marginTop: -12,
+                      background: '#fff', borderRadius: '50%',
+                      border: `3px solid ${GP_COLORS.text}`,
+                      boxShadow: '0 4px 14px rgba(0,0,0,0.6)',
+                    }}/>
+                  </div>
+                  <div style={{
+                    display: 'flex', justifyContent: 'space-between',
+                    marginTop: 12,
+                    fontFamily: GP_MONO, fontSize: 11, letterSpacing: 1.5,
+                    color: GP_COLORS.muted2, textTransform: 'uppercase',
+                  }}>
+                    <span>relaxed</span><span>aggressive</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* CENTER: arrow / ↔ */}
+              <div style={{
+                textAlign: 'center',
+                fontFamily: GP_MONO, fontSize: 54,
+                color: GP_COLORS.muted2,
+              }}>↔</div>
+
+              {/* RIGHT: hours/day */}
+              <div style={{
+                background: GP_COLORS.bg2,
+                border: `1px solid ${locked ? GP_COLORS.greenDim : GP_COLORS.border}`,
+                borderRadius: 12, padding: 44,
+                transform: `translateY(${panelY}px) scale(${lockPulse})`,
+                boxShadow: locked ? `0 0 40px rgba(126,224,107,0.2)` : 'none',
+                transition: 'none',
+              }}>
+                <div style={{
+                  fontFamily: GP_MONO, fontSize: 13, letterSpacing: 3,
+                  color: GP_COLORS.muted, textTransform: 'uppercase', marginBottom: 20,
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                }}>
+                  <span>HOURS / DAY NEEDED</span>
+                  {locked && (
+                    <span style={{
+                      fontSize: 11, color: GP_COLORS.green, letterSpacing: 2,
+                    }}>● LOCKED</span>
+                  )}
+                </div>
+                <div style={{
+                  fontFamily: GP_MONO, fontSize: 120, fontWeight: 700,
+                  color: GP_COLORS.yellow, lineHeight: 1,
+                  letterSpacing: -4,
+                  fontVariantNumeric: 'tabular-nums',
+                }}>
+                  {hours}<span style={{ color: GP_COLORS.muted, fontSize: 60, marginLeft: 6 }}>hr</span>
+                  <span style={{ marginLeft: 24 }}>{String(mins).padStart(2,'0')}</span>
+                  <span style={{ color: GP_COLORS.muted, fontSize: 60, marginLeft: 6 }}>min</span>
+                </div>
+                <div style={{
+                  marginTop: 50,
+                  fontFamily: GP_MONO, fontSize: 15,
+                  color: GP_COLORS.muted,
+                }}>
+                  effective rate: <span style={{ color: GP_COLORS.text }}>${Math.round(rate)}K / hr</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Caption under */}
+            <div style={{
+              position: 'absolute', bottom: 120, left: 0, right: 0,
+              textAlign: 'center',
+              fontFamily: GP_MONO, fontSize: 20,
+              color: GP_COLORS.muted, letterSpacing: 2,
+              opacity: interpolate([1.2, 1.8, duration-0.4, duration], [0, 1, 1, 0], Easing.easeInOutCubic)(localTime),
+            }}>
+              binary-search ·<span style={{ color: GP_COLORS.text }}> drag the deadline → we solve for the grind</span>
+            </div>
+          </div>
+        );
+      }}
+    </Sprite>
+  );
+}
+
+Object.assign(window, { SceneSearch });
+
+
+// ========== scene_outro.jsx ==========
+// scene_outro.jsx — Final tagline + CTA
+
+function SceneOutro({ start, end }) {
+  return (
+    <Sprite start={start} end={end}>
+      {({ localTime, duration }) => {
+        // Reveal lines in sequence
+        const line1Op = interpolate([0, 0.6], [0, 1], Easing.easeOutCubic)(localTime);
+        const line1Y  = interpolate([0, 0.7], [30, 0], Easing.easeOutCubic)(localTime);
+        const line2Op = interpolate([0.6, 1.2], [0, 1], Easing.easeOutCubic)(localTime);
+        const line2Y  = interpolate([0.6, 1.3], [30, 0], Easing.easeOutCubic)(localTime);
+        const subOp  = interpolate([1.4, 2.0], [0, 1], Easing.easeOutCubic)(localTime);
+        const ctaOp  = interpolate([2.2, 2.8], [0, 1], Easing.easeOutCubic)(localTime);
+        const ctaScale = interpolate([2.2, 2.8], [0.9, 1], Easing.easeOutBack)(localTime);
+
+        // Ambient glow pulse
+        const glow = 0.15 + 0.08 * Math.sin(localTime * 1.4);
+
+        return (
+          <div style={{ position: 'absolute', inset: 0, background: GP_COLORS.bg }}>
+            {/* Big ambient glow */}
+            <div style={{
+              position: 'absolute', left: '50%', top: '50%',
+              width: 1800, height: 1800, marginLeft: -900, marginTop: -900,
+              background: `radial-gradient(circle, rgba(126,224,107,${glow}), transparent 55%)`,
+              pointerEvents: 'none',
+            }}/>
+
+            {/* Stack centered */}
+            <div style={{
+              position: 'absolute',
+              left: '50%', top: '50%',
+              transform: 'translate(-50%, -50%)',
+              textAlign: 'center',
+              width: 1600,
+            }}>
+              <div style={{
+                fontFamily: GP_MONO, fontWeight: 700,
+                fontSize: 128, lineHeight: 1.0,
+                color: GP_COLORS.text, letterSpacing: -4,
+                opacity: line1Op, transform: `translateY(${line1Y}px)`,
+              }}>
+                Plan the grind.
+              </div>
+              <div style={{
+                fontFamily: GP_MONO, fontWeight: 700,
+                fontSize: 128, lineHeight: 1.0,
+                color: GP_COLORS.green, letterSpacing: -4,
+                marginTop: 10,
+                opacity: line2Op, transform: `translateY(${line2Y}px)`,
+                textShadow: `0 0 30px rgba(126,224,107,0.35)`,
+              }}>
+                Hit the number.
+              </div>
+
+              <div style={{
+                marginTop: 56,
+                fontFamily: GP_MONO, fontSize: 22,
+                color: GP_COLORS.muted, letterSpacing: 3,
+                textTransform: 'uppercase',
+                opacity: subOp,
+              }}>
+                ——  no guesswork  ·  no spreadsheets  ——
+              </div>
+
+              {/* CTA button */}
+              <div style={{
+                marginTop: 72,
+                display: 'inline-flex', alignItems: 'center', gap: 14,
+                padding: '22px 36px',
+                background: GP_COLORS.green, color: '#0a0c0a',
+                fontFamily: GP_MONO, fontSize: 22, fontWeight: 700,
+                letterSpacing: 2, textTransform: 'uppercase',
+                borderRadius: 8,
+                opacity: ctaOp,
+                transform: `scale(${ctaScale})`,
+                boxShadow: `0 20px 50px rgba(126,224,107,0.3)`,
+              }}>
+                Launch Calculator <span>→</span>
+              </div>
+
+              <div style={{
+                marginTop: 24,
+                fontFamily: GP_MONO, fontSize: 16,
+                color: GP_COLORS.muted2, letterSpacing: 2,
+                opacity: ctaOp,
+              }}>
+                grind-planner.app
+              </div>
+            </div>
+          </div>
+        );
+      }}
+    </Sprite>
+  );
+}
+
+Object.assign(window, { SceneOutro });
+
+
+// ========== video_app.jsx ==========
+// video_app.jsx — root app (runs last, all globals available)
+
+const SCENES = {
+  hook:     { start: 0.0,  end: 6.5 },
+  select:   { start: 6.5,  end: 13.5 },
+  schedule: { start: 13.5, end: 22.0 },
+  search:   { start: 22.0, end: 28.5 },
+  outro:    { start: 28.5, end: 33.0 },
+};
+const TOTAL = 33.0;
+
+function TimestampLabel() {
+  const time = useTime();
+  const sec = Math.floor(time);
+  React.useEffect(() => {
+    const root = document.getElementById('video-root');
+    if (root) root.setAttribute('data-screen-label', `t=${sec}s`);
+  }, [sec]);
+  return null;
+}
+
+function CrossFade({ scene, fadeDur = 0.35 }) {
+  const { time } = useTimeline();
+  const { start, end } = scene;
+  const t = time;
+  let op = 1;
+  if (t < start) op = 0;
+  else if (t < start + fadeDur) op = (t - start) / fadeDur;
+  else if (t > end) op = 0;
+  else if (t > end - fadeDur) op = (end - t) / fadeDur;
+  if (op <= 0) return null;
+  return (
+    <div style={{ position: 'absolute', inset: 0, opacity: op, willChange: 'opacity' }}>
+      {scene.el}
+    </div>
+  );
+}
+
+function VideoRoot() {
+  return (
+    <div id="video-root" data-screen-label="t=0s" style={{ position: 'absolute', inset: 0, background: GP_COLORS.bg }}>
+      <TimestampLabel/>
+      <CrossFade scene={{ ...SCENES.hook,     el: <SceneHook     start={SCENES.hook.start}     end={SCENES.hook.end}/> }}/>
+      <CrossFade scene={{ ...SCENES.select,   el: <SceneSelect   start={SCENES.select.start}   end={SCENES.select.end}/> }}/>
+      <CrossFade scene={{ ...SCENES.schedule, el: <SceneSchedule start={SCENES.schedule.start} end={SCENES.schedule.end}/> }}/>
+      <CrossFade scene={{ ...SCENES.search,   el: <SceneSearch   start={SCENES.search.start}   end={SCENES.search.end}/> }}/>
+      <CrossFade scene={{ ...SCENES.outro,    el: <SceneOutro    start={SCENES.outro.start}    end={SCENES.outro.end}/> }}/>
+
+      <div style={{
+        position: 'absolute', top: 60, right: 80,
+        display: 'flex', alignItems: 'center', gap: 10,
+        fontFamily: GP_MONO, fontSize: 14, fontWeight: 700,
+        color: GP_COLORS.text, letterSpacing: 3,
+        textTransform: 'uppercase', zIndex: 50,
+        pointerEvents: 'none',
+      }}>
+        <span style={{
+          width: 10, height: 10, borderRadius: '50%',
+          background: GP_COLORS.green,
+          boxShadow: `0 0 10px ${GP_COLORS.green}`,
+        }}/>
+        GRIND PLANNER
+      </div>
+
+      <Scanlines opacity={0.035}/>
+      <Vignette/>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <Stage width={1920} height={1080} duration={TOTAL} background={GP_COLORS.bg} persistKey="grind-planner-video">
+      <VideoRoot/>
+    </Stage>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+
+
+</script></body></html>
