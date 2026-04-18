@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GTA Grind Calculator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0f0d;
+    --panel: #161a16;
+    --panel-2: #1f251f;
+    --border: #2a332a;
+    --text: #e8ede8;
+    --muted: #8a948a;
+    --green: #7ee06b;
+    --green-dim: #4a8a3d;
+    --yellow: #f2c94c;
+    --yellow-dim: #c29a2a;
+    --passive: #6bb5e0;
+    --danger: #e06b6b;
+  }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    overflow: hidden;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #11170f 0%, var(--bg) 100%);
+  }
+  header h1 {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--green);
+    text-transform: uppercase;
+  }
+  header h1 span { color: var(--yellow); }
+  .gear-btn {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 40px; height: 40px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 18px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .gear-btn:hover { background: var(--green-dim); color: #000; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 16px;
+    padding: 16px;
+    height: calc(100vh - 73px);
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .panel.schedule { grid-row: 1 / 3; grid-column: 2; }
+  .panel h2 {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: var(--yellow);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* Activities */
+  .activity {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .activity:hover { border-color: var(--green-dim); }
+  .activity.selected { border-color: var(--green); background: #1d2a1a; }
+  .activity input[type=checkbox] {
+    width: 18px; height: 18px;
+    accent-color: var(--green);
+    cursor: pointer;
+  }
+  .activity-info { flex: 1; }
+  .activity-name { font-weight: 600; margin-bottom: 2px; }
+  .activity-meta { color: var(--muted); font-size: 12px; }
+  .activity-rate { color: var(--green); font-weight: 700; font-size: 13px; }
+  .passive-tag {
+    display: inline-block;
+    background: var(--passive);
+    color: #000;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: 6px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  /* Target */
+  .field { margin-bottom: 14px; }
+  .field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--muted);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+  }
+  .field input[type=text], .field input[type=number] {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 16px;
+    font-family: inherit;
+    font-weight: 600;
+  }
+  .field input:focus {
+    outline: none;
+    border-color: var(--green);
+  }
+
+  .toggle {
+    display: flex;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px;
+    margin-bottom: 14px;
+  }
+  .toggle button {
+    flex: 1;
+    padding: 8px;
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border-radius: 4px;
+    transition: all 0.15s;
+  }
+  .toggle button.active {
+    background: var(--green);
+    color: #000;
+  }
+
+  /* Schedule */
+  .summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .summary-card {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    text-align: center;
+  }
+  .summary-card .label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .summary-card .value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--green);
+  }
+  .summary-card.yellow .value { color: var(--yellow); }
+
+  .day {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  .day-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px dashed var(--border);
+  }
+  .day-title { font-weight: 700; color: var(--yellow); letter-spacing: 1px; }
+  .day-stats { color: var(--muted); font-size: 12px; }
+  .day-stats .money { color: var(--green); font-weight: 600; }
+  .day-run {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 13px;
+  }
+  .day-run .name { color: var(--text); }
+  .day-run .detail { color: var(--muted); }
+  .day-run.passive .name::before {
+    content: "⟳ ";
+    color: var(--passive);
+  }
+  .day-run.downtime {
+    color: var(--muted);
+    font-style: italic;
+    font-size: 12px;
+    padding-left: 12px;
+    opacity: 0.75;
+  }
+  .day-run.pending {
+    color: var(--yellow-dim);
+    font-size: 12px;
+    border-top: 1px dashed var(--border);
+    margin-top: 6px;
+    padding-top: 8px;
+  }
+  .day-run.pending .detail { color: var(--yellow); }
+
+  .empty {
+    color: var(--muted);
+    text-align: center;
+    padding: 40px 20px;
+    font-style: italic;
+  }
+
+  /* Modal */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    width: 90%;
+    max-width: 720px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .modal-header h2 {
+    color: var(--yellow);
+    font-size: 14px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+  .modal-body { padding: 16px 20px; overflow: auto; flex: 1; }
+  .modal-footer {
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+  }
+  .close-btn {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 22px;
+    cursor: pointer;
+    width: 30px; height: 30px;
+  }
+  .close-btn:hover { color: var(--text); }
+
+  .setting-row {
+    display: grid;
+    grid-template-columns: 1.4fr 0.9fr 0.65fr 0.75fr 0.8fr 0.75fr 0.75fr 0.5fr auto;
+    gap: 8px;
+    margin-bottom: 8px;
+    align-items: center;
+  }
+  .setting-row input, .setting-row select {
+    padding: 8px 10px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    width: 100%;
+  }
+  .setting-row input:focus { outline: none; border-color: var(--green); }
+  .setting-head {
+    display: grid;
+    grid-template-columns: 1.4fr 0.9fr 0.65fr 0.75fr 0.8fr 0.75fr 0.75fr 0.5fr auto;
+    gap: 8px;
+    padding: 0 2px 6px;
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+
+  .btn {
+    padding: 9px 16px;
+    background: var(--green);
+    color: #000;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    transition: all 0.15s;
+  }
+  .btn:hover { background: #9af088; }
+  .btn-sec { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); }
+  .btn-sec:hover { background: var(--border); }
+  .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+  .btn-danger:hover { background: var(--danger); color: #000; }
+  .btn-icon {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--danger);
+    width: 30px; height: 30px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+  }
+  .btn-icon:hover { background: var(--danger); color: #000; border-color: var(--danger); }
+
+  /* scrollbars */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--green-dim); }
+
+  /* ── Animations ─────────────────────────────────────────── */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeInDown {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes slideInRight {
+    from { opacity: 0; transform: translateX(16px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes popIn {
+    0%   { opacity: 0; transform: scale(0.94); }
+    60%  { opacity: 1; transform: scale(1.01); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+  @keyframes overlayFade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes valuePulse {
+    0%   { transform: translateY(0); color: var(--yellow); }
+    40%  { transform: translateY(-2px); }
+    100% { transform: translateY(0); }
+  }
+
+  /* Header */
+  header { animation: fadeInDown 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .gear-btn { transition: background 0.15s, color 0.15s, transform 0.2s cubic-bezier(0.22, 1, 0.36, 1); }
+  .gear-btn:hover { transform: rotate(40deg); }
+  .gear-btn:active { transform: rotate(80deg) scale(0.94); }
+
+  /* Panel entry — staggered */
+  .panel {
+    animation: fadeInUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+    transition: border-color 0.2s;
+  }
+  .layout > .panel:nth-child(1) { animation-delay: 0.08s; }
+  .layout > .panel:nth-child(2) { animation-delay: 0.16s; }
+  .layout > .panel:nth-child(3) { animation-delay: 0.24s; }
+
+  /* Activities */
+  .activity {
+    animation: slideInRight 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+    transition: border-color 0.18s, background 0.18s, transform 0.18s;
+  }
+  .activity:hover { transform: translateX(2px); }
+  .activity:active { transform: translateX(0) scale(0.995); }
+  .activity.selected { animation: popIn 0.3s cubic-bezier(0.22, 1, 0.36, 1); }
+
+  /* Toggle slide */
+  .toggle { position: relative; }
+  .toggle button { position: relative; z-index: 1; transition: color 0.18s; }
+  .toggle button.active { color: #000; }
+
+  /* Fields & inputs */
+  .field input, .setting-row input, .setting-row select {
+    transition: border-color 0.15s, box-shadow 0.2s, background 0.15s;
+  }
+  .field input:focus, .setting-row input:focus {
+    box-shadow: 0 0 0 3px rgba(126, 224, 107, 0.15);
+  }
+
+  /* Summary cards */
+  .summary-card {
+    transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s;
+  }
+  .summary-card:hover { transform: translateY(-2px); border-color: var(--green-dim); }
+  .summary-card .value { display: inline-block; transition: color 0.2s; }
+  .summary-card .value.flash { animation: valuePulse 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+
+  /* Schedule days (staggered, capped) */
+  .day { animation: fadeInUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .day:nth-child(1)  { animation-delay: 0.00s; }
+  .day:nth-child(2)  { animation-delay: 0.04s; }
+  .day:nth-child(3)  { animation-delay: 0.08s; }
+  .day:nth-child(4)  { animation-delay: 0.12s; }
+  .day:nth-child(5)  { animation-delay: 0.16s; }
+  .day:nth-child(6)  { animation-delay: 0.20s; }
+  .day:nth-child(7)  { animation-delay: 0.24s; }
+  .day:nth-child(8)  { animation-delay: 0.28s; }
+  .day:nth-child(9)  { animation-delay: 0.32s; }
+  .day:nth-child(10) { animation-delay: 0.36s; }
+
+  /* Buttons */
+  .btn { transition: background 0.15s, transform 0.15s, box-shadow 0.2s; }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(126, 224, 107, 0.18); }
+  .btn:active { transform: translateY(0) scale(0.98); }
+  .btn-sec:hover { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); }
+  .btn-danger:hover { box-shadow: 0 4px 12px rgba(224, 107, 107, 0.22); }
+
+  /* Modal */
+  .overlay { transition: opacity 0.22s ease; opacity: 0; pointer-events: none; }
+  .overlay.open { opacity: 1; pointer-events: auto; animation: overlayFade 0.22s ease both; }
+  .modal {
+    transform: scale(0.96) translateY(8px);
+    opacity: 0;
+    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease;
+  }
+  .overlay.open .modal { transform: scale(1) translateY(0); opacity: 1; }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-delay: 0ms !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>GTA <span>$</span> GRIND CALCULATOR</h1>
+  <button class="gear-btn" id="openSettings" title="Settings">⚙</button>
+</header>
+
+<div class="layout">
+  <div class="panel">
+    <h2>Activities</h2>
+    <div id="activitiesList"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Target</h2>
+    <div class="field">
+      <label>How much money do I need?</label>
+      <input type="text" id="targetAmount" value="$10,000,000">
+    </div>
+    <div class="toggle">
+      <button id="modeDeadline" class="active">Deadline</button>
+      <button id="modeDaily">Daily Grind</button>
+    </div>
+    <div class="field" id="deadlineField">
+      <label>I want this in ___ days</label>
+      <input type="number" id="days" value="7" min="1">
+    </div>
+    <div class="field" id="dailyField" style="display:none;">
+      <label>I can play ___ hours per day</label>
+      <input type="number" id="hoursPerDay" value="3" min="0.25" step="0.25">
+    </div>
+  </div>
+
+  <div class="panel schedule">
+    <h2>Schedule</h2>
+    <div class="summary">
+      <div class="summary-card"><div class="label">Total Days</div><div class="value" id="sumDays">—</div></div>
+      <div class="summary-card yellow"><div class="label">Active Hrs/Day</div><div class="value" id="sumHours">—</div></div>
+      <div class="summary-card"><div class="label">Total Earned</div><div class="value" id="sumEarned">—</div></div>
+      <div class="summary-card yellow"><div class="label">Effective $/hr</div><div class="value" id="sumRate">—</div></div>
+    </div>
+    <div id="scheduleBody"></div>
+  </div>
+</div>
+
+<div class="overlay" id="settingsOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Settings</h2>
+      <button class="close-btn" id="closeSettings">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="setting-head">
+        <div>Name</div><div>Payout ($)</div><div>Time</div><div>Accrue</div><div>Sell Every</div><div>Cooldown</div><div>Downtime</div><div>Passive</div><div></div>
+      </div>
+      <div id="settingsList"></div>
+      <button class="btn btn-sec" id="addActivity" style="margin-top:10px;">+ Add Activity</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" id="resetDefaults">Reset Defaults</button>
+      <button class="btn" id="saveSettings">Save & Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const DEFAULTS = [
+  { id: 'cayo',    name: 'Cayo Perico Heist',   payout: 1000000, minutes: 80, accrueMinutes: 0,    cooldown: 144, downtime: 20, passive: false, selected: true },
+  { id: 'cluck',   name: 'Cluckin Bell Heist',  payout: 500000,  minutes: 50, accrueMinutes: 0,    cooldown: 0,   downtime: 20, passive: false, selected: true },
+  { id: 'nc',      name: 'Nightclub Full Sell', payout: 1010400, minutes: 20, accrueMinutes: 3996, sellEveryMinutes: 1200, cooldown: 0,   downtime: 10, passive: true,  selected: true },
+  { id: 'acid',    name: 'Acid Lab',            payout: 335000,  minutes: 20, accrueMinutes: 240,  sellEveryMinutes: 240, cooldown: 0, downtime: 10, passive: true,  selected: true },
+  { id: 'payphone',name: 'Payphone Hit',        payout: 85000,   minutes: 10, accrueMinutes: 0,    cooldown: 60,  downtime: 0,  passive: false, selected: true },
+  { id: 'agency',  name: 'Agency VIP Contract', payout: 1000000, minutes: 90, accrueMinutes: 0,    cooldown: 0,   downtime: 20, passive: false, selected: false },
+];
+
+const STORAGE_KEY = 'gta-grind-calc-v10';
+
+let state = load();
+let mode = 'deadline'; // or 'daily'
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) return parsed;
+    }
+  } catch (e) {}
+  return JSON.parse(JSON.stringify(DEFAULTS));
+}
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function fmtMoney(n) {
+  const sign = n < 0 ? '-' : '';
+  const v = Math.abs(Math.round(n));
+  return sign + '$' + v.toLocaleString('en-US');
+}
+function fmtTime(min) {
+  min = Math.round(min);
+  if (min <= 0) return '0min';
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h && m) return `${h}hr ${m}min`;
+  if (h) return `${h}hr`;
+  return `${m}min`;
+}
+function parseMoney(str) {
+  const n = parseFloat(String(str).replace(/[^0-9.]/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
+function renderActivities() {
+  const el = document.getElementById('activitiesList');
+  el.innerHTML = '';
+  state.forEach((a, i) => {
+    const rateBase = a.passive ? (a.sellEveryMinutes || a.accrueMinutes || a.minutes) : a.minutes;
+    const rate = a.payout / (rateBase / 60);
+    const meta = a.passive
+      ? `${fmtMoney(a.payout)} · ${fmtTime(a.minutes)} sell · every ${fmtTime(a.sellEveryMinutes || a.accrueMinutes || 0)} · ${fmtTime(a.accrueMinutes || 0)} to 100%`
+      : `${fmtMoney(a.payout)} · ${fmtTime(a.minutes)}`;
+    const div = document.createElement('label');
+    div.className = 'activity' + (a.selected ? ' selected' : '');
+    div.innerHTML = `
+      <input type="checkbox" ${a.selected ? 'checked' : ''} data-i="${i}">
+      <div class="activity-info">
+        <div class="activity-name">${escapeHtml(a.name)}${a.passive ? '<span class="passive-tag">passive</span>' : ''}</div>
+        <div class="activity-meta">${meta}</div>
+      </div>
+      <div class="activity-rate">${fmtMoney(rate)}/hr</div>
+    `;
+    div.querySelector('input').addEventListener('change', (e) => {
+      state[i].selected = e.target.checked;
+      save();
+      renderActivities();
+      compute();
+    });
+    el.appendChild(div);
+  });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Simulate one day: returns { runs, activeMin, earned, passiveEarned }
+// hoursPerDay is active play time. Passive activities accrue per minute of play.
+// Events are chronologically ordered: { type:'active'|'passive', name, count, minutes, money, downtimeMin }
+function simulateDay(hoursPerDay, active, passive, stock) {
+  const day = { events: [], activeMin: 0, downtimeMin: 0, earned: 0, passiveEarned: 0 };
+  const totalMin = hoursPerDay * 60;
+
+  // Passive: accumulate "stock" in minutes of play. When stock >= accrualMin (p.minutes),
+  // full sell(s) trigger — earn payout, consume sellMinutes + downtime of active time.
+  let passiveSellMin = 0;
+  let passiveDowntimeMin = 0;
+  const passiveSellEvents = [];
+  passive.forEach(p => {
+    const sellEvery = p.sellEveryMinutes || p.accrueMinutes || p.minutes;
+    stock[p.id] = (stock[p.id] || 0) + totalMin;
+    const sells = Math.floor(stock[p.id] / sellEvery);
+    if (sells > 0) {
+      stock[p.id] -= sells * sellEvery;
+      const earned = sells * p.payout;
+      const sellM = sells * (p.minutes || 0);
+      const dtM = sells * (p.downtime || 0);
+      day.passiveEarned += earned;
+      passiveSellMin += sellM;
+      passiveDowntimeMin += dtM;
+      passiveSellEvents.push({ type: 'passive', name: p.name, count: sells, minutes: sellM, money: earned, downtimeMin: dtM });
+    }
+  });
+
+  const activeBudget = Math.max(0, totalMin - passiveSellMin - passiveDowntimeMin);
+  day.activeMin += passiveSellMin;
+  day.downtimeMin += passiveDowntimeMin;
+
+  // Active: chronological sim
+  const availableAt = {};
+  active.forEach(a => availableAt[a.id] = 0);
+  let t = 0;
+  let lastEvent = null;
+  while (t < activeBudget) {
+    let picked = null;
+    for (const a of active) {
+      if (availableAt[a.id] > t) continue;
+      if (t + a.minutes > activeBudget) continue;
+      picked = a;
+      break;
+    }
+    if (!picked) {
+      let nextT = Infinity;
+      for (const a of active) {
+        if (availableAt[a.id] > t && availableAt[a.id] + a.minutes <= activeBudget) {
+          nextT = Math.min(nextT, availableAt[a.id]);
+        }
+      }
+      if (nextT === Infinity) break;
+      const gap = nextT - t;
+      // attribute the cooldown gap as downtime on the previous event; break merge
+      if (lastEvent) lastEvent.downtimeMin += gap;
+      day.downtimeMin += gap;
+      lastEvent = null;
+      t = nextT;
+      continue;
+    }
+    day.earned += picked.payout;
+    day.activeMin += picked.minutes;
+    t += picked.minutes;
+    const dt = picked.downtime || 0;
+    day.downtimeMin += dt;
+    // Merge with previous event if same activity
+    if (lastEvent && lastEvent.id === picked.id && lastEvent.type === 'active') {
+      lastEvent.count += 1;
+      lastEvent.minutes += picked.minutes;
+      lastEvent.money += picked.payout;
+      lastEvent.downtimeMin += dt;
+    } else {
+      lastEvent = { type: 'active', id: picked.id, name: picked.name, count: 1, minutes: picked.minutes, money: picked.payout, downtimeMin: dt };
+      day.events.push(lastEvent);
+    }
+    for (const a of active) {
+      if (availableAt[a.id] < t + dt) availableAt[a.id] = t + dt;
+    }
+    availableAt[picked.id] = t + Math.max(dt, picked.cooldown || 0);
+    t += dt;
+  }
+
+  // Append passive sells at end of day
+  passiveSellEvents.forEach(e => day.events.push(e));
+
+  return day;
+}
+
+// Liquidate any remaining passive stock at the end of the period (partial sell).
+function finalSell(lastDay, passive, stock) {
+  passive.forEach(p => {
+    if (!stock[p.id] || stock[p.id] <= 0) return;
+    const sellEvery = p.sellEveryMinutes || p.accrueMinutes || p.minutes;
+    const frac = stock[p.id] / sellEvery;
+    const earn = frac * p.payout;
+    const sellM = frac * (p.minutes || 0);
+    const dtM = frac * (p.downtime || 0);
+    lastDay.passiveEarned += earn;
+    lastDay.activeMin += sellM;
+    lastDay.downtimeMin += dtM;
+    const accrue = p.accrueMinutes || sellEvery;
+    const displayPct = ((stock[p.id]) / accrue) * 100;
+    lastDay.events.push({
+      type: 'passive', name: p.name, count: null, partial: true,
+      pct: displayPct, minutes: sellM, money: earn, downtimeMin: dtM
+    });
+    stock[p.id] = 0;
+  });
+}
+
+// Build per-day pending-state snapshots: how much $ is sitting in each passive at day end.
+function computePendingSnapshot(passive, stock) {
+  const snap = [];
+  passive.forEach(p => {
+    const s = stock[p.id] || 0;
+    const accrue = p.accrueMinutes || p.minutes;
+    const sellEvery = p.sellEveryMinutes || accrue;
+    if (s > 0) {
+      snap.push({ name: p.name, pct: (s / accrue) * 100, pending: (s / sellEvery) * p.payout });
+    }
+  });
+  return snap;
+}
+
+function compute() {
+  const target = parseMoney(document.getElementById('targetAmount').value);
+  const selected = state.filter(a => a.selected);
+  const active = selected.filter(a => !a.passive).map(a => ({...a, rate: a.payout/(a.minutes/60)}))
+    .sort((x,y) => y.rate - x.rate);
+  const passive = selected.filter(a => a.passive);
+
+  let hoursPerDay, maxDays;
+  if (mode === 'deadline') {
+    maxDays = Math.max(1, parseInt(document.getElementById('days').value) || 1);
+    // Binary search hoursPerDay so total earned ≈ target
+    let lo = 0, hi = 24;
+    const simTotal = (h) => {
+      let tot = 0;
+      const st = {};
+      let lastDay = null;
+      for (let d = 0; d < maxDays; d++) {
+        lastDay = simulateDay(h, active, passive, st);
+        tot += lastDay.earned + lastDay.passiveEarned;
+      }
+      // final-sell liquidation
+      if (lastDay) {
+        const beforePass = lastDay.passiveEarned;
+        finalSell(lastDay, passive, st);
+        tot += lastDay.passiveEarned - beforePass;
+      }
+      return tot;
+    };
+    if (simTotal(hi) < target) {
+      hoursPerDay = 24;
+    } else if (simTotal(0) >= target) {
+      hoursPerDay = 0;
+    } else {
+      for (let i = 0; i < 40; i++) {
+        const mid = (lo + hi) / 2;
+        if (simTotal(mid) >= target) hi = mid;
+        else lo = mid;
+      }
+      hoursPerDay = hi;
+    }
+  } else {
+    hoursPerDay = Math.max(0, parseFloat(document.getElementById('hoursPerDay').value) || 0);
+    maxDays = 365;
+  }
+
+  const days = [];
+  let earned = 0;
+  let dayNum = 0;
+  const cap = mode === 'deadline' ? maxDays : 365;
+  const stock = {};
+
+  while (dayNum < cap) {
+    dayNum++;
+    const day = simulateDay(hoursPerDay, active, passive, stock);
+    day.num = dayNum;
+    day.pending = computePendingSnapshot(passive, stock);
+    const dayTotal = day.earned + day.passiveEarned;
+    earned += dayTotal;
+    day.runningTotal = earned;
+    days.push(day);
+
+    if (mode === 'daily' && earned >= target) break;
+    if (mode === 'deadline' && dayNum >= maxDays) break;
+  }
+
+  // Final liquidation on the last day
+  if (days.length) {
+    const last = days[days.length - 1];
+    const before = last.passiveEarned;
+    finalSell(last, passive, stock);
+    const extra = last.passiveEarned - before;
+    if (extra > 0) {
+      earned += extra;
+      last.runningTotal = earned;
+    }
+    last.pending = computePendingSnapshot(passive, stock);
+  }
+
+  renderSchedule(days, target, hoursPerDay, earned);
+}
+
+const _lastSummary = {};
+function setSummary(id, text) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (_lastSummary[id] !== text) {
+    el.textContent = text;
+    el.classList.remove('flash');
+    void el.offsetWidth; // restart animation
+    el.classList.add('flash');
+    _lastSummary[id] = text;
+  }
+}
+
+function renderSchedule(days, target, hoursPerDay, earned) {
+  setSummary('sumDays', String(days.length));
+  setSummary('sumHours', fmtTime(hoursPerDay * 60));
+  setSummary('sumEarned', fmtMoney(earned));
+  const totalHours = days.length * hoursPerDay;
+  const effRate = totalHours > 0 ? earned / totalHours : 0;
+  setSummary('sumRate', fmtMoney(effRate) + '/hr');
+
+  const body = document.getElementById('scheduleBody');
+  body.innerHTML = '';
+
+  if (!days.length) {
+    body.innerHTML = '<div class="empty">Select activities and set a target to see your schedule.</div>';
+    return;
+  }
+
+  days.forEach(day => {
+    const div = document.createElement('div');
+    div.className = 'day';
+    const dayTotal = day.earned + day.passiveEarned;
+    const parts = [];
+    day.events.forEach((e, idx) => {
+      if (e.type === 'passive') {
+        if (e.partial) {
+          const lbl = `final sell @ ${e.pct.toFixed(0)}% full`;
+          const tm = fmtTime(e.minutes);
+          parts.push(`<div class="day-run passive"><span class="name">${escapeHtml(e.name)} — ${lbl}</span><span class="detail">${tm} · ${fmtMoney(e.money)}</span></div>`);
+        } else {
+          const lbl = `× ${e.count} sell${e.count>1?'s':''}`;
+          const tm = fmtTime(e.minutes);
+          parts.push(`<div class="day-run passive"><span class="name">${escapeHtml(e.name)} ${lbl}</span><span class="detail">${tm} · ${fmtMoney(e.money)}</span></div>`);
+        }
+      } else {
+        const cnt = e.count > 1 ? ` × ${e.count}` : '';
+        parts.push(`<div class="day-run"><span class="name">${escapeHtml(e.name)}${cnt}</span><span class="detail">${fmtTime(e.minutes)} · ${fmtMoney(e.money)}</span></div>`);
+      }
+      const isLastEvent = idx === day.events.length - 1;
+      const hasPending = day.pending && day.pending.length;
+      if (e.downtimeMin > 0 && (!isLastEvent || hasPending)) {
+        parts.push(`<div class="day-run downtime"><span class="name">↓ downtime</span><span class="detail">${fmtTime(e.downtimeMin)}</span></div>`);
+      }
+    });
+    // Pending passive snapshot
+    if (day.pending && day.pending.length) {
+      day.pending.forEach(p => {
+        parts.push(`<div class="day-run pending"><span class="name">⏳ ${escapeHtml(p.name)} — ${p.pct.toFixed(0)}% full</span><span class="detail">${fmtMoney(p.pending)} pending</span></div>`);
+      });
+    }
+    const runsHtml = parts.length ? parts.join('') : '<div class="day-run"><span class="detail">No activities scheduled.</span></div>';
+
+    div.innerHTML = `
+      <div class="day-header">
+        <div class="day-title">Day ${day.num}</div>
+        <div class="day-stats">${fmtTime(day.activeMin)} active${day.downtimeMin ? ' · ' + fmtTime(day.downtimeMin) + ' downtime' : ''} · <span class="money">${fmtMoney(dayTotal)}</span> · Total: ${fmtMoney(day.runningTotal)}</div>
+      </div>
+      ${runsHtml}
+    `;
+    body.appendChild(div);
+  });
+
+  if (earned < target) {
+    const warn = document.createElement('div');
+    warn.className = 'empty';
+    warn.style.color = 'var(--yellow)';
+    warn.textContent = `⚠ Target not reached — ${fmtMoney(target - earned)} short. ${mode === 'deadline' ? 'Add more days or activities.' : 'Increase daily hours.'}`;
+    body.appendChild(warn);
+  }
+}
+
+/* Target input formatting */
+const targetInput = document.getElementById('targetAmount');
+targetInput.addEventListener('input', () => {
+  const pos = targetInput.selectionStart;
+  const raw = targetInput.value.replace(/[^0-9]/g, '');
+  targetInput.value = raw ? '$' + parseInt(raw).toLocaleString('en-US') : '';
+  compute();
+});
+targetInput.addEventListener('blur', () => {
+  const raw = targetInput.value.replace(/[^0-9]/g, '');
+  targetInput.value = raw ? '$' + parseInt(raw).toLocaleString('en-US') : '$0';
+});
+
+document.getElementById('days').addEventListener('input', compute);
+document.getElementById('hoursPerDay').addEventListener('input', compute);
+
+document.getElementById('modeDeadline').addEventListener('click', () => {
+  mode = 'deadline';
+  document.getElementById('modeDeadline').classList.add('active');
+  document.getElementById('modeDaily').classList.remove('active');
+  document.getElementById('deadlineField').style.display = '';
+  document.getElementById('dailyField').style.display = 'none';
+  compute();
+});
+document.getElementById('modeDaily').addEventListener('click', () => {
+  mode = 'daily';
+  document.getElementById('modeDaily').classList.add('active');
+  document.getElementById('modeDeadline').classList.remove('active');
+  document.getElementById('dailyField').style.display = '';
+  document.getElementById('deadlineField').style.display = 'none';
+  compute();
+});
+
+/* Settings modal */
+const overlay = document.getElementById('settingsOverlay');
+document.getElementById('openSettings').addEventListener('click', () => {
+  renderSettings();
+  overlay.classList.add('open');
+});
+document.getElementById('closeSettings').addEventListener('click', () => overlay.classList.remove('open'));
+overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.remove('open'); });
+
+let editBuf = [];
+function renderSettings() {
+  editBuf = JSON.parse(JSON.stringify(state));
+  const list = document.getElementById('settingsList');
+  list.innerHTML = '';
+  editBuf.forEach((a, i) => {
+    const row = document.createElement('div');
+    row.className = 'setting-row';
+    row.innerHTML = `
+      <input type="text" value="${escapeHtml(a.name)}" data-field="name" data-i="${i}">
+      <input type="number" value="${a.payout}" data-field="payout" data-i="${i}" min="0">
+      <input type="number" value="${a.minutes}" data-field="minutes" data-i="${i}" min="1">
+      <input type="number" value="${a.accrueMinutes || 0}" data-field="accrueMinutes" data-i="${i}" min="0">
+      <input type="number" value="${a.sellEveryMinutes || 0}" data-field="sellEveryMinutes" data-i="${i}" min="0">
+      <input type="number" value="${a.cooldown || 0}" data-field="cooldown" data-i="${i}" min="0">
+      <input type="number" value="${a.downtime || 0}" data-field="downtime" data-i="${i}" min="0">
+      <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;">
+        <input type="checkbox" data-field="passive" data-i="${i}" ${a.passive ? 'checked' : ''} style="accent-color:var(--passive);">
+      </label>
+      <button class="btn-icon" data-del="${i}">×</button>
+    `;
+    list.appendChild(row);
+  });
+  list.querySelectorAll('input').forEach(inp => {
+    inp.addEventListener('input', (e) => {
+      const i = +e.target.dataset.i;
+      const f = e.target.dataset.field;
+      if (f === 'passive') editBuf[i][f] = e.target.checked;
+      else if (f === 'payout' || f === 'minutes' || f === 'cooldown' || f === 'downtime' || f === 'accrueMinutes' || f === 'sellEveryMinutes') editBuf[i][f] = parseFloat(e.target.value) || 0;
+      else editBuf[i][f] = e.target.value;
+    });
+  });
+  list.querySelectorAll('[data-del]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const i = +e.target.dataset.del;
+      editBuf.splice(i, 1);
+      // re-render keeping buffer
+      state = editBuf;
+      renderSettings();
+    });
+  });
+}
+
+document.getElementById('addActivity').addEventListener('click', () => {
+  editBuf.push({ id: 'c'+Date.now(), name: 'New Activity', payout: 100000, minutes: 30, accrueMinutes: 0, cooldown: 0, downtime: 0, passive: false, selected: true });
+  state = editBuf;
+  renderSettings();
+});
+document.getElementById('saveSettings').addEventListener('click', () => {
+  // preserve selected flags from previous state where possible
+  state = editBuf.map(a => ({
+    ...a,
+    selected: a.selected !== undefined ? a.selected : true
+  }));
+  save();
+  renderActivities();
+  compute();
+  overlay.classList.remove('open');
+});
+document.getElementById('resetDefaults').addEventListener('click', () => {
+  if (!confirm('Reset all activities to defaults?')) return;
+  state = JSON.parse(JSON.stringify(DEFAULTS));
+  save();
+  renderSettings();
+  renderActivities();
+  compute();
+});
+
+/* init */
+renderActivities();
+compute();
+</script>
+</body>
+</html>

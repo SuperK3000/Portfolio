@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ExifViewer — Read the metadata, quietly.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Fraunces:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f4efe6;
+    --bg-2: #ebe3d4;
+    --paper: #fbf7ef;
+    --ink: #2a2420;
+    --ink-2: #534a42;
+    --muted: #8a7e6e;
+    --border: #d9cfbc;
+    --border-2: #c2b59e;
+    --moss: #5f7a4a;
+    --moss-2: #3f5530;
+    --clay: #b8724a;
+  }
+  html { scroll-behavior: smooth; }
+  html, body { background: var(--bg); color: var(--ink); overflow-x: hidden; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 16px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    background-image:
+      radial-gradient(circle at 15% 20%, rgba(95,122,74,0.06), transparent 50%),
+      radial-gradient(circle at 85% 80%, rgba(184,114,74,0.05), transparent 50%);
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9'/><feColorMatrix values='0 0 0 0 0.2 0 0 0 0 0.15 0 0 0 0 0.1 0 0 0 0.06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    pointer-events: none; z-index: 1;
+    mix-blend-mode: multiply; opacity: 0.5;
+  }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+  .serif { font-family: 'Fraunces', Georgia, serif; }
+
+  .container { max-width: 1180px; margin: 0 auto; padding: 0 32px; position: relative; z-index: 2; }
+
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(244,239,230,0.88);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-family: 'Fraunces', serif; font-weight: 600; font-size: 18px;
+    color: var(--ink); text-decoration: none;
+    font-style: italic;
+  }
+  .brand .leaf {
+    width: 18px; height: 18px; border-radius: 50% 0;
+    background: var(--moss);
+    transform: rotate(-30deg);
+    animation: sway 5s ease-in-out infinite;
+  }
+  @keyframes sway { 0%,100% { transform: rotate(-30deg); } 50% { transform: rotate(-18deg); } }
+  .nav-links { display: flex; gap: 6px; align-items: center; }
+  .nav-links a {
+    font-size: 13px; letter-spacing: 0.5px;
+    color: var(--ink-2); text-decoration: none;
+    padding: 8px 12px;
+    transition: color .2s;
+  }
+  .nav-links a:hover { color: var(--moss-2); }
+  .nav-links a.cta {
+    background: var(--moss); color: var(--paper);
+    border-radius: 100px; padding: 9px 16px;
+    font-weight: 600;
+  }
+  .nav-links a.cta:hover { background: var(--moss-2); color: var(--paper); }
+  .nav-back {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 1px;
+    color: var(--muted);
+  }
+
+  /* HERO */
+  .hero {
+    padding: 100px 0 80px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-tag {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 2px;
+    color: var(--moss-2); padding: 6px 14px;
+    border: 1px solid var(--moss); border-radius: 100px;
+    text-transform: uppercase; margin-bottom: 28px;
+    background: rgba(95,122,74,0.08);
+  }
+  .hero h1 {
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: clamp(48px, 8vw, 108px);
+    line-height: 1;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    margin-bottom: 32px;
+    max-width: 14ch;
+  }
+  .hero h1 em {
+    font-style: italic; font-weight: 600;
+    color: var(--moss-2);
+  }
+  .hero h1 span {
+    display: inline-block;
+    animation: fadeUp 1s ease both;
+  }
+  .hero h1 .l1 { animation-delay: 0.1s; }
+  .hero h1 .l2 { animation-delay: 0.25s; }
+  .hero h1 .l3 { animation-delay: 0.4s; }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .hero p.lead {
+    font-size: 20px;
+    color: var(--ink-2);
+    max-width: 58ch;
+    margin-bottom: 40px;
+    animation: fadeUp 1s ease 0.55s both;
+  }
+  .hero-cta {
+    display: flex; gap: 14px; flex-wrap: wrap;
+    animation: fadeUp 1s ease 0.7s both;
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 14px 24px;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px; font-weight: 600;
+    text-decoration: none;
+    border-radius: 100px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all .25s;
+  }
+  .btn-primary { background: var(--moss); color: var(--paper); }
+  .btn-primary:hover { background: var(--moss-2); transform: translateY(-2px); box-shadow: 0 12px 30px rgba(63,85,48,0.25); }
+  .btn-ghost { background: transparent; color: var(--ink); border-color: var(--border-2); }
+  .btn-ghost:hover { border-color: var(--moss); color: var(--moss-2); }
+  .btn .arrow { transition: transform .2s; }
+  .btn:hover .arrow { transform: translateX(3px); }
+
+  /* Preview card — styled to feel like an EXIF readout */
+  .preview {
+    margin-top: 72px;
+    display: grid; grid-template-columns: 1.1fr 1fr;
+    gap: 0;
+    background: var(--paper);
+    border: 1px solid var(--border-2);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 30px 60px -30px rgba(42,36,32,0.25);
+    animation: fadeUp 1s ease 0.9s both;
+  }
+  .preview-img {
+    background:
+      linear-gradient(135deg, #6b8257 0%, #a5b38a 40%, #d4b88c 70%, #8c6b4e 100%);
+    position: relative;
+    min-height: 340px;
+    display: flex; align-items: flex-end; padding: 20px;
+  }
+  .preview-img::after {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(255,255,255,0.2), transparent 30%),
+      radial-gradient(circle at 80% 70%, rgba(0,0,0,0.2), transparent 40%);
+  }
+  .preview-img .label {
+    position: relative;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 2px;
+    color: var(--paper); text-transform: uppercase;
+    background: rgba(42,36,32,0.6);
+    padding: 6px 10px;
+    border-radius: 4px;
+    backdrop-filter: blur(4px);
+  }
+  .preview-data {
+    padding: 32px 36px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+  }
+  .preview-data h5 {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 14px;
+    font-weight: 400;
+    letter-spacing: 1px;
+  }
+  .data-row {
+    display: flex; justify-content: space-between;
+    padding: 9px 0;
+    border-bottom: 1px dashed var(--border);
+  }
+  .data-row:last-child { border-bottom: none; }
+  .data-row .k { color: var(--muted); }
+  .data-row .v { color: var(--ink); }
+
+  /* SECTIONS */
+  section { padding: 100px 0; position: relative; }
+  .section-label {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 2px;
+    color: var(--moss-2); text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+  .section-label::before { content: '❦'; color: var(--clay); }
+  .section-title {
+    font-family: 'Fraunces', serif;
+    font-size: clamp(32px, 5vw, 60px);
+    line-height: 1.05;
+    letter-spacing: -0.015em;
+    font-weight: 400;
+    max-width: 22ch;
+    margin-bottom: 20px;
+  }
+  .section-title em { font-style: italic; color: var(--moss-2); font-weight: 600; }
+  .section-sub {
+    color: var(--ink-2);
+    max-width: 60ch;
+    font-size: 18px;
+    margin-bottom: 56px;
+  }
+
+  /* Feature grid */
+  .feature-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+  .feature {
+    padding: 32px 28px;
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    transition: transform .3s, border-color .3s, box-shadow .3s;
+  }
+  .feature:hover {
+    transform: translateY(-6px);
+    border-color: var(--moss);
+    box-shadow: 0 20px 40px -20px rgba(63,85,48,0.25);
+  }
+  .feature-icon {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: rgba(95,122,74,0.12);
+    color: var(--moss-2);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Fraunces', serif;
+    font-size: 20px; font-style: italic;
+    margin-bottom: 20px;
+  }
+  .feature h3 {
+    font-family: 'Fraunces', serif;
+    font-size: 22px; font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--ink);
+  }
+  .feature p {
+    color: var(--ink-2);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  /* Use cases */
+  .usecase-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .usecase {
+    padding: 36px 32px;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    position: relative;
+    overflow: hidden;
+    transition: transform .3s;
+  }
+  .usecase:hover { transform: translateY(-4px); }
+  .usecase::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--moss), var(--clay));
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform .4s;
+  }
+  .usecase:hover::before { transform: scaleX(1); }
+  .usecase-num {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 48px;
+    color: var(--clay);
+    opacity: 0.45;
+    line-height: 1;
+    margin-bottom: 14px;
+  }
+  .usecase h4 {
+    font-family: 'Fraunces', serif;
+    font-size: 24px;
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+  .usecase p { color: var(--ink-2); font-size: 15px; }
+
+  /* Install steps */
+  .install-wrap { background: var(--bg-2); }
+  .steps {
+    display: grid;
+    gap: 20px;
+    counter-reset: step;
+  }
+  .step {
+    display: grid;
+    grid-template-columns: 80px 1fr;
+    gap: 28px;
+    padding: 28px 0;
+    border-top: 1px solid var(--border-2);
+    align-items: start;
+  }
+  .step:last-child { border-bottom: 1px solid var(--border-2); }
+  .step-num {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 56px;
+    color: var(--moss);
+    line-height: 1;
+    font-weight: 400;
+  }
+  .step h4 {
+    font-family: 'Fraunces', serif;
+    font-size: 22px; font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .step p { color: var(--ink-2); font-size: 15px; margin-bottom: 12px; }
+  .step code, .code {
+    display: block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    background: var(--ink);
+    color: #e5dcc9;
+    padding: 14px 18px;
+    border-radius: 8px;
+    line-height: 1.6;
+    overflow-x: auto;
+  }
+  .code .dim { color: #9a8f7c; }
+  .code .kw { color: #c4d68a; }
+
+  /* FAQ */
+  details.q {
+    border-top: 1px solid var(--border-2);
+    padding: 22px 0;
+  }
+  details.q:last-of-type { border-bottom: 1px solid var(--border-2); }
+  details.q summary {
+    list-style: none; cursor: pointer;
+    font-family: 'Fraunces', serif;
+    font-size: 20px; font-weight: 600;
+    display: flex; justify-content: space-between;
+    gap: 16px;
+    transition: color .2s;
+  }
+  details.q summary:hover { color: var(--moss-2); }
+  details.q summary::-webkit-details-marker { display: none; }
+  details.q summary::after {
+    content: '+';
+    font-family: 'Fraunces', serif;
+    font-size: 28px; color: var(--clay);
+    line-height: 1; transition: transform .3s;
+  }
+  details.q[open] summary::after { transform: rotate(45deg); }
+  details.q[open] summary { color: var(--moss-2); }
+  details.q .a {
+    padding-top: 14px;
+    color: var(--ink-2);
+    font-size: 16px;
+    max-width: 64ch;
+  }
+
+  /* Final */
+  .final {
+    padding: 140px 0;
+    text-align: center;
+    background:
+      radial-gradient(circle at 50% 0%, rgba(95,122,74,0.15), transparent 60%),
+      var(--bg-2);
+    border-top: 1px solid var(--border);
+  }
+  .final h2 {
+    font-family: 'Fraunces', serif;
+    font-size: clamp(40px, 7vw, 88px);
+    font-weight: 400;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    margin-bottom: 24px;
+  }
+  .final h2 em { font-style: italic; color: var(--moss-2); font-weight: 600; }
+  .final p { color: var(--ink-2); max-width: 50ch; margin: 0 auto 36px; font-size: 18px; }
+
+  footer {
+    padding: 40px 0;
+    background: var(--ink);
+    color: #d9cfbc;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 1px;
+  }
+  .foot { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+  .foot a { color: #d9cfbc; text-decoration: none; margin-right: 16px; }
+  .foot a:hover { color: #c4d68a; }
+
+  .reveal { opacity: 0; transform: translateY(32px); transition: opacity .8s, transform .8s; }
+  .reveal.in { opacity: 1; transform: translateY(0); }
+
+  @media (max-width: 900px) {
+    .feature-grid { grid-template-columns: 1fr; }
+    .usecase-grid { grid-template-columns: 1fr; }
+    .preview { grid-template-columns: 1fr; }
+    .step { grid-template-columns: 56px 1fr; gap: 18px; }
+    .step-num { font-size: 40px; }
+    .nav-links a:not(.cta):not(.nav-back) { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="container nav-inner">
+    <a class="brand" href="../index.html"><span class="leaf"></span>ExifViewer</a>
+    <div class="nav-links">
+      <a class="nav-back mono" href="../index.html">← all projects</a>
+      <a href="../Index/index.html">Grind</a>
+      <a href="../Photo%20Automation/index.html">Photo Watcher</a>
+      <a class="cta" href="#install">Install →</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="container">
+    <h1>
+      <span class="l1">Read the</span><br>
+      <span class="l2"><em>metadata,</em></span><br>
+      <span class="l3">quietly.</span>
+    </h1>
+    <p class="lead">ExifViewer is a small, native macOS app for peeking inside your photos. Camera, lens, aperture, GPS, timestamps — everything the EXIF block holds, laid out plainly. No cloud, no upload, no noise.</p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="#install">Install <span class="arrow">→</span></a>
+      <a class="btn btn-ghost" href="#usecases">See use cases</a>
+    </div>
+
+    <div class="preview">
+      <div class="preview-img"><div class="label mono">IMG_4821.HEIC</div></div>
+      <div class="preview-data">
+        <h5>exif read-out</h5>
+        <div class="data-row"><span class="k">Camera</span><span class="v">Fujifilm X-T5</span></div>
+        <div class="data-row"><span class="k">Lens</span><span class="v">XF 35mm f/1.4</span></div>
+        <div class="data-row"><span class="k">ISO</span><span class="v">400</span></div>
+        <div class="data-row"><span class="k">Aperture</span><span class="v">ƒ/2.0</span></div>
+        <div class="data-row"><span class="k">Shutter</span><span class="v">1/250s</span></div>
+        <div class="data-row"><span class="k">Focal</span><span class="v">35mm</span></div>
+        <div class="data-row"><span class="k">Taken</span><span class="v">2026-03-14 16:42</span></div>
+        <div class="data-row"><span class="k">GPS</span><span class="v">47.497, 19.040</span></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="container">
+    <div class="reveal">
+      <div class="section-label">Features</div>
+      <h2 class="section-title">Quiet by design. <em>Thorough by default.</em></h2>
+      <p class="section-sub">ExifViewer doesn't try to be a photo editor. It's a reader. It opens your file, shows you everything it knows, and gets out of the way.</p>
+    </div>
+
+    <div class="feature-grid reveal">
+      <div class="feature">
+        <div class="feature-icon">i</div>
+        <h3>Full EXIF read</h3>
+        <p>Camera, lens, settings, GPS, orientation, software, color profile, timestamps — every tag the file carries.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">◇</div>
+        <h3>Native SwiftUI</h3>
+        <p>Built for macOS from the ground up. Launches instantly, handles HEIC / RAW / JPEG / PNG without complaint.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">⌂</div>
+        <h3>Local-only</h3>
+        <p>Nothing ever leaves your machine. No analytics, no telemetry, no "cloud sync" you didn't ask for.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">☼</div>
+        <h3>Drop-in friendly</h3>
+        <p>Drag a photo onto the window, open from Finder, or set it as your default EXIF viewer. It just opens.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">⎘</div>
+        <h3>Copy anything</h3>
+        <p>Every field is copy-paste. Grab the GPS coords, paste them into Maps. Grab the timestamp for a caption.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">∅</div>
+        <h3>Zero fluff</h3>
+        <p>No accounts. No upsells. No onboarding flow. You open the app, you see the data. That's the whole thing.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="usecases" style="background: var(--bg-2);">
+  <div class="container">
+    <div class="reveal">
+      <div class="section-label">Use Cases</div>
+      <h2 class="section-title">When you'd actually <em>reach for it.</em></h2>
+      <p class="section-sub">Four situations where ExifViewer earns its keep on your dock.</p>
+    </div>
+
+    <div class="usecase-grid reveal">
+      <div class="usecase">
+        <div class="usecase-num">01</div>
+        <h4>Verifying what you shot</h4>
+        <p>Did your camera actually write the right ISO? Was that lens really at 50mm? Check the file, not your memory.</p>
+      </div>
+      <div class="usecase">
+        <div class="usecase-num">02</div>
+        <h4>Finding where a photo was taken</h4>
+        <p>Photos with GPS tags show exact lat/long. Copy the coords, drop them into Maps, and you're there.</p>
+      </div>
+      <div class="usecase">
+        <div class="usecase-num">03</div>
+        <h4>Privacy audits before sharing</h4>
+        <p>See exactly what your photo reveals about you — location, device, software — before posting or sending.</p>
+      </div>
+      <div class="usecase">
+        <div class="usecase-num">04</div>
+        <h4>Checking if a photo was edited</h4>
+        <p>Software tags, modification dates, and color profile often give away whether a file has been through an editor.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="install" class="install-wrap">
+  <div class="container">
+    <div class="reveal">
+      <div class="section-label">Installation</div>
+      <h2 class="section-title">Build it yourself. <em>Four steps.</em></h2>
+      <p class="section-sub">ExifViewer ships as source. You need a Mac with Xcode. Takes about two minutes end to end.</p>
+    </div>
+
+    <div class="steps reveal">
+      <div class="step">
+        <div class="step-num">i.</div>
+        <div>
+          <h4>Install Xcode</h4>
+          <p>Grab Xcode from the Mac App Store (or <span class="mono">xcode-select --install</span> if you only need the command line tools and want to use a newer Xcode build later).</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">ii.</div>
+        <div>
+          <h4>Clone the repository</h4>
+          <p>Pull the source down from GitHub.</p>
+          <div class="code"><span class="dim">$</span> <span class="kw">git clone</span> https://github.com/yourname/ExifViewer.git
+<span class="dim">$</span> <span class="kw">cd</span> ExifViewer/Exifviewerproject</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">iii.</div>
+        <div>
+          <h4>Open in Xcode</h4>
+          <p>Double-click <span class="mono">ExifViewer.xcodeproj</span>, or from the terminal:</p>
+          <div class="code"><span class="dim">$</span> <span class="kw">open</span> ExifViewer.xcodeproj</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">iv.</div>
+        <div>
+          <h4>Build &amp; run</h4>
+          <p>Pick the <span class="mono">ExifViewer</span> scheme, hit <span class="mono">⌘R</span>. First build takes ~30 seconds. After that, drag the app to <span class="mono">/Applications</span> if you want it to stick.</p>
+          <div class="code"><span class="dim"># or build from CLI:</span>
+<span class="dim">$</span> <span class="kw">xcodebuild</span> -project ExifViewer.xcodeproj -scheme ExifViewer -configuration Release</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top: 40px;">
+      <a class="btn btn-primary" href="https://github.com/" target="_blank">View Source on GitHub <span class="arrow">↗</span></a>
+      <a class="btn btn-ghost" href="#faq">Read FAQ</a>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="container">
+    <div class="reveal" style="max-width: 800px;">
+      <div class="section-label">FAQ</div>
+      <h2 class="section-title">Small answers to <em>small questions.</em></h2>
+      <div style="margin-top: 40px;">
+        <details class="q" open>
+          <summary>What file types does it support?</summary>
+          <div class="a">JPEG, HEIC, PNG, TIFF, and most common RAW formats that macOS can already read. Basically anything Preview opens will also open here, and EXIF from any of them will render.</div>
+        </details>
+        <details class="q">
+          <summary>Do I need a developer account?</summary>
+          <div class="a">No. You build and run locally in Xcode, which signs it with a free personal signing identity. No paid Apple Developer membership required for personal use.</div>
+        </details>
+        <details class="q">
+          <summary>Why isn't there a notarized .app release?</summary>
+          <div class="a">Notarization needs a paid developer account and I'd rather keep it free and open-source. Building from Xcode takes under a minute.</div>
+        </details>
+        <details class="q">
+          <summary>Does it edit or remove metadata?</summary>
+          <div class="a">No — it's read-only by design. If you want to strip EXIF, macOS Preview's <em>Tools → Show Inspector</em> can already do that. ExifViewer is for inspecting, not scrubbing.</div>
+        </details>
+        <details class="q">
+          <summary>Does it send anything over the network?</summary>
+          <div class="a">Not a byte. The app doesn't bind a network socket. Check <span class="mono">Console.app</span> or Little Snitch if you want to verify.</div>
+        </details>
+        <details class="q">
+          <summary>Will there be an iOS version?</summary>
+          <div class="a">Maybe. The parsing code is shared SwiftUI/Apple-frameworks, so porting is mostly UI work. If enough people actually use the Mac version, it'll happen.</div>
+        </details>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="final">
+  <div class="container">
+    <h2>Quiet tool. <em>Useful daily.</em></h2>
+    <p>Build it once, keep it in your dock forever.</p>
+    <a class="btn btn-primary" href="#install">Install ExifViewer <span class="arrow">→</span></a>
+  </div>
+</section>
+
+<footer>
+  <div class="container foot">
+    <div>© 2026 ExifViewer · part of <a href="../index.html">Karcsi's projects</a></div>
+    <div>
+      <a href="../index.html">all projects</a>
+      <a href="../Index/index.html">grind planner</a>
+      <a href="../Photo%20Automation/index.html">photo watcher</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('in'); });
+  }, { threshold: 0.1 });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+  // Force-download helper
+  document.querySelectorAll('a[download]').forEach(a => {
+    a.addEventListener('click', async (e) => {
+      const url = a.getAttribute('href');
+      if (!url || (url.startsWith('http') && !url.startsWith(location.origin))) return;
+      e.preventDefault();
+      const name = a.getAttribute('download') || url.split('/').pop();
+      try {
+        const r = await fetch(url);
+        if (!r.ok) throw new Error('fetch failed');
+        const b = await r.blob();
+        const u = URL.createObjectURL(b);
+        const x = document.createElement('a');
+        x.href = u; x.download = name;
+        document.body.appendChild(x); x.click();
+        document.body.removeChild(x);
+        setTimeout(() => URL.revokeObjectURL(u), 1000);
+      } catch (err) { window.location.href = url; }
+    });
+  });
+</script>
+</body>
+</html>
